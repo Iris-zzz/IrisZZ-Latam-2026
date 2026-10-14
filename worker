@@ -1,32 +1,23 @@
-// ==========================================================================
-// Iris & Zhenzhen · Mexico & Latin America Trip — 旅行手册 Worker
-// 单文件 Cloudflare Worker：GET / 返回整页 HTML；/api/todos 提供多端同步的
-// 待办清单读写接口，数据存放在绑定的 KV 命名空间 TRIP_KV 里。
-// ==========================================================================
-
-const PAGE_HTML = `
 <!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Iris & Zhenzhen · Mexico & Latin America Trip</title>
+<title>Iris &amp; Zhenzhen · Mexico &amp; Latin America Trip</title>
 <meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{
-  --marigold:#e0932c; --marigold-soft:#f6d9a8;
-  --clay:#c1440e; --clay-soft:#f0c3ac;
-  --indigo:#35507a; --indigo-soft:#c3d2e6;
-  --agave:#4f7942; --agave-soft:#cfe0c4;
-  --transit:#8b7355; --transit-soft:#e3d6c2;
+  --marigold:#e0932c; --clay:#c1440e; --indigo:#35507a; --agave:#4f7942; --transit:#8b7355;
   --radius-s:10px; --radius-m:16px; --radius-l:22px;
-  --shadow:0 1px 0 rgba(30,20,10,.06);
 }
 html[data-theme="day"]{
   --bg:#faf6ed; --surface:#ffffff; --surface-alt:#f2ead9;
   --ink:#2b2318; --ink-soft:#6e6153; --line:#e3d8c2;
   --hero-bg:linear-gradient(160deg,#2b2318 0%,#4a3a24 55%,#7a5a2e 100%);
   --hero-ink:#faf3e2; --hero-soft:#d8c6a4;
+  --marigold-soft:#f6d9a8; --clay-soft:#f0c3ac; --indigo-soft:#c3d2e6; --agave-soft:#cfe0c4; --transit-soft:#e3d6c2;
 }
 html[data-theme="night"]{
   --bg:#10141c; --surface:#1a2029; --surface-alt:#212838;
@@ -44,17 +35,14 @@ body{
   transition:background .6s ease,color .6s ease;
 }
 h1,h2,h3,.serif{font-family:"Iowan Old Style","Songti SC","STSong","Noto Serif SC",Georgia,serif}
-.wrap{max-width:640px;margin:0 auto;padding:0 0 64px}
+.wrap{max-width:640px;margin:0 auto;padding:0 0 70px}
 a{color:inherit}
-.section{padding:34px 20px 6px}
-.section h2{font-size:21px;margin:0 0 4px;font-weight:600;letter-spacing:.02em}
-.section .section-sub{font-size:13px;color:var(--ink-soft);margin:0 0 18px}
+.section{padding:22px 20px 6px}
+.section h2{font-size:19px;margin:0 0 4px;font-weight:600;letter-spacing:.02em}
+.section .section-sub{font-size:12.5px;color:var(--ink-soft);margin:0 0 16px}
 
-/* ---------- HERO / 此刻关注 ---------- */
-.hero{
-  background:var(--hero-bg); color:var(--hero-ink);
-  padding:30px 20px 26px; position:relative; overflow:hidden;
-}
+/* ---------- HERO ---------- */
+.hero{background:var(--hero-bg);color:var(--hero-ink);padding:26px 20px 24px;position:relative;overflow:hidden}
 .hero::after{
   content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
   background-image:radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.5) 0, transparent 60%),
@@ -63,95 +51,136 @@ a{color:inherit}
     radial-gradient(1px 1px at 40% 75%, rgba(255,255,255,.3) 0, transparent 60%);
 }
 .hero-inner{max-width:640px;margin:0 auto;position:relative}
-.hero-brand{font-size:14px;color:var(--hero-soft);margin:0 0 14px;font-weight:500;letter-spacing:.01em}
-.hero-eyebrow{font-size:12px;color:var(--hero-soft);margin:0 0 10px;display:flex;align-items:center;gap:8px}
-.hero-eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--marigold);display:inline-block;animation:pulse 2s infinite}
+.hero-brand{font-size:13px;color:var(--hero-soft);margin:0 0 14px;letter-spacing:.02em}
+.hero-eyebrow{font-size:11.5px;color:var(--hero-soft);margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.hero-eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--marigold);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.hero-title{font-size:19px;margin:0 0 18px;font-weight:500}
-.hero-title b{font-weight:600}
-.countdown{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-.countdown .unit{text-align:center;min-width:58px}
-.countdown .num{font-family:"Iowan Old Style",Georgia,serif;font-size:34px;font-variant-numeric:tabular-nums;line-height:1}
-.countdown .lbl{font-size:11px;color:var(--hero-soft);margin-top:4px}
-.hero-todo{
-  margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.18);
-  font-size:14px;display:flex;gap:10px;align-items:baseline;
-}
-.hero-todo .k{color:var(--hero-soft);white-space:nowrap;font-size:12px}
+.hero-title{font-size:18px;margin:0 0 16px;font-weight:600}
+.countdown{display:flex;gap:10px;flex-wrap:wrap}
+.countdown .unit{text-align:center;min-width:56px}
+.countdown .num{font-family:"Iowan Old Style",Georgia,serif;font-size:32px;font-variant-numeric:tabular-nums;line-height:1}
+.countdown .lbl{font-size:10.5px;color:var(--hero-soft);margin-top:4px}
+.hero-todo{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13.5px;display:flex;gap:10px;align-items:baseline}
+.hero-todo .k{color:var(--hero-soft);white-space:nowrap;font-size:11.5px}
 
-/* ---------- ROUTE MAP ---------- */
-.map-wrap{overflow-x:hidden}
-#routeMap{width:100%;height:auto;display:block}
-.map-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:12px;color:var(--ink-soft)}
+/* ---------- NAV TABS ---------- */
+.nav{
+  position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);
+  overflow-x:auto;-webkit-overflow-scrolling:touch;
+}
+.nav::-webkit-scrollbar{display:none}
+.nav-inner{display:flex;gap:2px;max-width:640px;margin:0 auto;padding:0 12px;min-width:max-content}
+.nav button{
+  border:none;background:none;color:var(--ink-soft);font-family:inherit;font-size:14px;
+  padding:13px 12px;cursor:pointer;position:relative;white-space:nowrap;
+}
+.nav button.active{color:var(--ink);font-weight:600}
+.nav button.active::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--ink);border-radius:2px}
+.panel{display:none}
+.panel.active{display:block}
+
+/* ---------- 今日卡片 ---------- */
+.today-card{
+  margin:20px 20px 0;background:var(--surface);border:1px solid var(--line);
+  border-left:3px solid var(--marigold);border-radius:var(--radius-m);padding:16px 18px;
+}
+.today-card .kicker{font-size:11px;color:var(--marigold);font-weight:600;letter-spacing:.06em;margin-bottom:6px}
+.today-card h3{font-size:16.5px;margin:0 0 3px;font-weight:600}
+.today-card .meta{font-size:12px;color:var(--ink-soft);margin-bottom:12px}
+.today-items{display:grid;grid-template-columns:52px 1fr;gap:6px 10px;font-size:13.5px}
+.today-items .t{color:var(--ink-soft);font-size:12px;padding-top:1px}
+.today-alert{
+  margin-top:12px;font-size:12.5px;background:var(--clay-soft);color:var(--clay);
+  border-radius:var(--radius-s);padding:10px 12px;line-height:1.5;
+}
+.today-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+.btn{
+  font-size:12.5px;border:1px solid var(--line);border-radius:99px;padding:7px 14px;
+  text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:5px;background:var(--surface);
+  cursor:pointer;font-family:inherit;
+}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* ---------- 真实地图 ---------- */
+.map-box{position:relative;border-radius:var(--radius-m);overflow:hidden;border:1px solid var(--line)}
+#realMap{height:360px;width:100%;background:var(--surface-alt)}
+.map-chip{
+  position:absolute;z-index:500;background:var(--surface);color:var(--ink);
+  font-size:11px;padding:5px 11px;border-radius:99px;border:1px solid var(--line);
+  box-shadow:0 2px 6px rgba(0,0,0,.15);pointer-events:none;
+}
+.map-chip.start{top:10px;left:10px}
+.map-chip.end{bottom:10px;right:10px}
+.leaflet-popup-content-wrapper{background:var(--surface);color:var(--ink);border-radius:10px}
+.leaflet-popup-tip{background:var(--surface)}
+.leaflet-popup-content{font-size:12.5px;margin:9px 12px;font-family:inherit}
+.leaflet-popup-content b{font-weight:600}
+/* 夜间模式没有换深色底图源，用滤镜把 OSM 瓦片反色，图钉图层不受影响所以颜色还是准的 */
+html[data-theme="night"] .leaflet-tile-pane{filter:invert(92%) hue-rotate(180deg) brightness(95%) contrast(90%)}
+.map-legend{display:flex;flex-wrap:wrap;gap:13px;margin-top:12px;font-size:11.5px;color:var(--ink-soft)}
 .map-legend span{display:inline-flex;align-items:center;gap:6px}
-.map-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.map-legend i{width:9px;height:9px;border-radius:50%}
+.map-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 
-/* ---------- CARDS: flights / stays ---------- */
-.tabs{display:flex;gap:6px;margin-bottom:16px}
-.tabs button{
+/* ---------- SUB TABS (国家 / 机票住宿) ---------- */
+.subtabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.subtabs button{
   border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);
-  padding:7px 16px;border-radius:99px;font-size:13px;cursor:pointer;font-family:inherit;
+  padding:7px 15px;border-radius:99px;font-size:13px;cursor:pointer;font-family:inherit;
 }
-.tabs button.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.card-list{display:flex;flex-direction:column;gap:10px}
-.info-card{
-  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);
-  padding:14px 16px;
-}
-.info-card .row1{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
-.info-card .title{font-size:14.5px;font-weight:600}
-.info-card .detail{font-size:12.5px;color:var(--ink-soft);margin-top:4px}
-.tag{font-size:10.5px;padding:2px 8px;border-radius:99px;white-space:nowrap;flex-shrink:0}
+.subtabs button.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* ---------- 可折叠卡片 ---------- */
+.acc-group{margin-bottom:22px}
+.acc-group > .grp-title{font-size:12px;color:var(--ink-soft);margin:0 0 8px;letter-spacing:.04em;font-weight:600}
+.acc{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);margin-bottom:8px;overflow:hidden}
+.acc-head{display:flex;align-items:center;gap:11px;padding:13px 15px;cursor:pointer}
+.acc-date{font-size:11.5px;color:var(--ink-soft);width:44px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.acc-main{flex:1;min-width:0}
+.acc-title{font-size:14px;font-weight:600;line-height:1.35}
+.acc-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+.acc-chev{color:var(--ink-soft);font-size:12px;transition:transform .25s ease;flex-shrink:0}
+.acc.open .acc-chev{transform:rotate(90deg)}
+.acc-body{display:none;padding:0 15px 14px 70px;font-size:13px;color:var(--ink-soft)}
+.acc.open .acc-body{display:block}
+.acc-body .line{margin-bottom:5px}
+.acc-body .line b{color:var(--ink);font-weight:600}
+.tag{font-size:10px;padding:2px 8px;border-radius:99px;white-space:nowrap;flex-shrink:0}
 .tag.confirmed{background:var(--agave-soft);color:var(--agave)}
 .tag.pending{background:var(--clay-soft);color:var(--clay)}
 
 /* ---------- DAYS ---------- */
-.day-card{border-bottom:1px solid var(--line);padding:16px 0}
+.day-card{border-bottom:1px solid var(--line);padding:15px 0}
 .day-card:first-child{border-top:1px solid var(--line)}
-.day-head{display:flex;gap:14px;align-items:flex-start;cursor:pointer}
-.day-num{
-  font-family:"Iowan Old Style",Georgia,serif;font-size:13px;color:var(--ink-soft);
-  width:30px;flex-shrink:0;padding-top:2px;
-}
+.day-head{display:flex;gap:13px;align-items:flex-start;cursor:pointer}
+.day-num{font-family:"Iowan Old Style",Georgia,serif;font-size:12.5px;color:var(--ink-soft);width:28px;flex-shrink:0;padding-top:2px}
 .day-badge{width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:6px}
 .day-headline{flex:1;min-width:0}
 .day-date{font-size:11.5px;color:var(--ink-soft)}
-.day-title{font-size:15.5px;font-weight:600;margin-top:2px}
+.day-title{font-size:15px;font-weight:600;margin-top:2px}
 .day-chev{color:var(--ink-soft);font-size:12px;transition:transform .25s ease;padding-top:4px}
 .day-card.open .day-chev{transform:rotate(90deg)}
-.day-body{display:none;padding:14px 0 0 44px}
+.day-body{display:none;padding:13px 0 0 41px}
 .day-card.open .day-body{display:block}
-.day-items{display:grid;grid-template-columns:52px 1fr;gap:7px 10px;margin-bottom:12px}
+.day-items{display:grid;grid-template-columns:52px 1fr;gap:7px 10px;margin-bottom:11px}
 .day-time{font-size:12px;color:var(--ink-soft);padding-top:1px}
 .day-text{font-size:13.5px}
 .day-text .book-flag{color:var(--clay);font-size:11.5px;margin-left:4px}
-.day-meta{font-size:12.5px;color:var(--ink-soft);margin-top:6px}
+.day-meta{font-size:12.5px;color:var(--ink-soft);margin-top:5px}
 .day-meta b{color:var(--ink);font-weight:600}
-.day-tip{
-  margin-top:10px;font-size:12.5px;background:var(--surface-alt);border-radius:var(--radius-s);
-  padding:10px 12px;color:var(--ink-soft);
-}
-.day-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.day-actions a{
-  font-size:12px;border:1px solid var(--line);border-radius:99px;padding:6px 13px;
-  text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:5px;
-}
+.day-tip{margin-top:10px;font-size:12.5px;background:var(--surface-alt);border-radius:var(--radius-s);padding:10px 12px;color:var(--ink-soft)}
+.day-actions{display:flex;gap:8px;margin-top:11px;flex-wrap:wrap}
 .place-link{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:2px;cursor:pointer}
+.day-card.is-today{background:var(--surface-alt);margin:0 -14px;padding-left:14px;padding-right:14px;border-radius:var(--radius-m)}
 
 /* ---------- TODO ---------- */
 .progress-wrap{display:flex;align-items:center;gap:10px;margin-bottom:16px}
 .progress-bar{flex:1;height:6px;border-radius:99px;background:var(--surface-alt);overflow:hidden}
 .progress-fill{height:100%;background:var(--agave);width:0%;transition:width .4s ease}
 .progress-label{font-size:12px;color:var(--ink-soft);white-space:nowrap}
-.todo-item{
-  display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-bottom:1px solid var(--line);
-  cursor:pointer; user-select:none;
-}
+.todo-item{display:flex;align-items:flex-start;gap:11px;padding:11px 0;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
 .todo-item:last-child{border-bottom:none}
-.todo-check{
-  width:19px;height:19px;border-radius:6px;border:1.5px solid var(--ink-soft);flex-shrink:0;margin-top:1px;
-  display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s ease;
-}
+.todo-check{width:19px;height:19px;border-radius:6px;border:1.5px solid var(--ink-soft);flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .15s ease}
 .todo-item.done .todo-check{background:var(--agave);border-color:var(--agave);color:#fff}
 .todo-text{font-size:14px;flex:1}
 .todo-item.done .todo-text{color:var(--ink-soft);text-decoration:line-through}
@@ -159,17 +188,54 @@ a{color:inherit}
 .todo-sync-note{font-size:11.5px;color:var(--ink-soft);margin-top:14px}
 
 /* ---------- TIPS ---------- */
-.tip-grid{display:flex;flex-direction:column;gap:14px}
+.tip-grid{display:flex;flex-direction:column;gap:12px}
 .tip-block{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);padding:15px 17px}
-.tip-block h3{font-size:14.5px;margin:0 0 8px;font-weight:600}
-.tip-block p, .tip-block ul{font-size:13px;color:var(--ink-soft);margin:0}
+.tip-block h3{font-size:14px;margin:0 0 8px;font-weight:600}
+.tip-block p,.tip-block ul{font-size:12.5px;color:var(--ink-soft);margin:0}
 .tip-block ul{padding-left:18px}
 .tip-block li{margin-bottom:4px}
+.footer-note{padding:28px 20px 10px;font-size:11.5px;color:var(--ink-soft);text-align:center}
 
-.footer-note{padding:30px 20px 10px;font-size:11.5px;color:var(--ink-soft);text-align:center}
+/* ---------- 动身提醒（hero 内） ---------- */
+.hero-next{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.18);font-size:13px}
+.hero-next .hn-meta{color:var(--hero-soft);font-size:12px;margin-bottom:7px}
+.hero-next .hn-note{line-height:1.55;margin:0 0 10px;background:rgba(255,255,255,.09);border-radius:10px;padding:9px 11px;font-size:12.5px}
+.hero-next .hn-actions{display:flex;gap:8px;flex-wrap:wrap}
+.hero-next .btn{background:rgba(255,255,255,.12);color:var(--hero-ink);border-color:rgba(255,255,255,.28)}
+/* ---------- 行程里的地点链接 / 单项注意事项 ---------- */
+.item-map{text-decoration:none;margin-left:4px}
+.item-note{margin-top:4px;font-size:12px;color:var(--ink-soft);line-height:1.5}
+.today-items .book-flag{color:var(--clay);font-size:11.5px;margin-left:4px}
+.wx{font-size:11.5px;color:var(--ink-soft);margin-left:6px;white-space:nowrap}
+/* ---------- 天气面板 ---------- */
+.wx-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-m);padding:13px 15px;margin-bottom:10px}
+.wx-head{display:flex;align-items:center;gap:9px;margin-bottom:8px;font-size:14px}
+.wx-head .day-badge{margin-top:0}
+.wx-range{margin-left:auto;font-size:11.5px;color:var(--ink-soft)}
+.wx-days{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.wx-day{min-width:78px;text-align:center;background:var(--surface-alt);border-radius:var(--radius-s);padding:8px 6px}
+.wx-d{font-size:11px;color:var(--ink-soft)}
+.wx-i{font-size:22px;line-height:1.3}
+.wx-t{font-size:13px;font-weight:600}
+.wx-p{font-size:10.5px;color:var(--ink-soft);margin-top:2px}
+.wx-ref{font-size:12px;color:var(--ink-soft);margin-top:8px;line-height:1.5}
+/* ---------- 打包清单：多选 ---------- */
+.pack-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.pack-tools .btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.grp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.grp-head .grp-title{margin:0}
+.grp-btns button{border:none;background:none;color:var(--ink-soft);font-size:12px;font-family:inherit;cursor:pointer;padding:4px 0 4px 10px;text-decoration:underline;text-underline-offset:2px}
+.sel-dot{width:19px;height:19px;border-radius:50%;border:1.5px solid var(--ink-soft);flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:11px}
+.todo-item.sel{background:var(--surface-alt);border-radius:var(--radius-s)}
+.todo-item.sel .sel-dot{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.pack-bar{position:sticky;bottom:10px;z-index:15;display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--ink);color:var(--bg);border-radius:var(--radius-m);padding:10px 12px;margin-top:14px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.pack-bar span{font-size:12.5px;margin-right:auto}
+.pack-bar button{border:1px solid rgba(255,255,255,.4);background:transparent;color:var(--bg);border-radius:99px;font-size:12px;padding:6px 12px;font-family:inherit;cursor:pointer}
+.pack-bar button.go{background:var(--bg);color:var(--ink);border-color:var(--bg);font-weight:600}
 </style>
 </head>
 <body>
+
 <div class="hero">
   <div class="hero-inner">
     <p class="hero-brand serif">Iris &amp; Zhenzhen · Mexico &amp; Latin America</p>
@@ -181,454 +247,787 @@ a{color:inherit}
       <div class="unit"><div class="num" id="cd-m">--</div><div class="lbl">分</div></div>
       <div class="unit"><div class="num" id="cd-s">--</div><div class="lbl">秒</div></div>
     </div>
+    <div class="hero-next" id="heroNext"></div>
     <div class="hero-todo"><span class="k">当前待办</span><span id="heroTodo">加载中…</span></div>
   </div>
 </div>
 
+<nav class="nav">
+  <div class="nav-inner">
+    <button data-panel="overview" class="active">总览</button>
+    <button data-panel="bookings">机票住宿</button>
+    <button data-panel="days">每日行程</button>
+    <button data-panel="weather">天气</button>
+    <button data-panel="packing">打包清单</button>
+    <button data-panel="todos">待办</button>
+    <button data-panel="tips">贴士</button>
+  </div>
+</nav>
+
 <div class="wrap">
 
-  <section class="section map-section">
-    <h2>行程总览地图</h2>
-    <p class="section-sub">按时间顺序的落脚点,颜色代表所在区域,数字是过夜晚数</p>
-    <div class="map-wrap"><svg id="routeMap" viewBox="0 0 320 100"></svg></div>
-    <div class="map-legend" id="mapLegend"></div>
-  </section>
+  <!-- ============ 总览 ============ -->
+  <div class="panel active" id="panel-overview">
+    <div class="today-card" id="todayCard"></div>
 
-  <section class="section bookings-section">
-    <h2>已确认的行程</h2>
-    <p class="section-sub">机票已出票、住宿已确认的部分;标黄的是还在补充中的项目</p>
-    <div class="tabs">
-      <button data-tab="flights" class="active">机票</button>
-      <button data-tab="stays">住宿</button>
-    </div>
-    <div id="flightsList" class="card-list"></div>
-    <div id="staysList" class="card-list" hidden></div>
-  </section>
-
-  <section class="section days-section">
-    <h2>逐日行程</h2>
-    <p class="section-sub">点开每天可以看今日路线和一键导航,标 ⚠️ 的是需要提前订的</p>
-    <div id="daysList"></div>
-  </section>
-
-  <section class="section todo-section">
-    <h2>待办清单</h2>
-    <p class="section-sub">两人共用,谁划掉都会同步</p>
-    <div class="progress-wrap">
-      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-      <div class="progress-label" id="progressLabel">0 / 0</div>
-    </div>
-    <div id="todoList"></div>
-    <p class="todo-sync-note" id="todoSyncNote"></p>
-  </section>
-
-  <section class="section tips-section">
-    <h2>实用贴士</h2>
-    <div class="tip-grid">
-      <div class="tip-block">
-        <h3>货币与花费</h3>
-        <p>沿途经过墨西哥比索(MXN)、秘鲁索尔(PEN)、智利比索(CLP)、阿根廷比索(ARS)四种货币,阿根廷现金汇率通常比刷卡划算,建议入境后在正规渠道换一些现金零用。大额消费优先用 Wise / 信用卡。</p>
+    <section class="section">
+      <h2>行程总览地图</h2>
+      <p class="section-sub">真实地图,颜色代表所在区域,点每个点看入住晚数;墨西哥→秘鲁→巴塔哥尼亚→阿根廷东部一路向南</p>
+      <div class="map-box">
+        <div id="realMap"></div>
+        <div class="map-chip start">✈️ 出发:墨尔本</div>
+        <div class="map-chip end">✈️ 回程:墨尔本</div>
       </div>
-      <div class="tip-block">
-        <h3>海拔与身体</h3>
-        <p>库斯科(3400m)、马丘比丘徒步、惠曼塔湖(4200m)都在高海拔区域,抵达当天尽量放慢节奏、多喝水,提前备好高反药和肠胃炎药。百内 & 菲茨罗伊徒步日强度都在8-11小时,注意补给和防晒防风。</p>
-      </div>
-      <div class="tip-block">
-        <h3>提前预订清单</h3>
-        <ul>
-          <li>马丘比丘门票 + 火车票(最容易被忽略,建议最先订)</li>
-          <li>弗里达故居门票(周一闭馆,每日限量)</li>
-          <li>墨西哥城⇄瓦哈卡的 ADO 夜巴(亡灵节前后旺季)</li>
-          <li>百内国家公园 BusSur 接驳车、冰川团/门票</li>
-          <li>Don Julio 牛排馆订位、快艇冲瀑布 Gran Aventura</li>
-        </ul>
-      </div>
-      <div class="tip-block">
-        <h3>关于最后一程</h3>
-        <p>回程机票是圣地亚哥经停后到悉尼,计划在经停点墨尔本直接下机、不再飞悉尼那一段。这属于「隐藏城市票」操作:托运行李默认会挂到悉尼,建议尽量只带手提行李登机,并留意值机与登机口是否有异常提示。</p>
-      </div>
-    </div>
-  </section>
+      <div class="map-legend" id="mapLegend"></div>
+      <div class="map-links" id="mapLinks"></div>
+    </section>
 
-  <p class="footer-note">中南美 40 天 · 2026.10.21 – 11.29 · 本页面信息以实际出票 / 订单为准</p>
+    <section class="section">
+      <h2>整段行程一览</h2>
+      <p class="section-sub">每个国家的时间跨度和主要城市</p>
+      <div id="countrySummary"></div>
+    </section>
+  </div>
+
+  <!-- ============ 机票住宿 ============ -->
+  <div class="panel" id="panel-bookings">
+    <section class="section">
+      <h2>已确认的行程</h2>
+      <p class="section-sub">点开每张卡片看详情;标「待补充」的还没拿到正式凭证</p>
+      <div class="subtabs" id="bookingTabs">
+        <button data-b="flights" class="active">✈️ 机票</button>
+        <button data-b="stays">🏠 住宿</button>
+      </div>
+      <div id="flightsBox"></div>
+      <div id="staysBox" hidden></div>
+    </section>
+  </div>
+
+  <!-- ============ 每日行程 ============ -->
+  <div class="panel" id="panel-days">
+    <section class="section">
+      <h2>逐日行程</h2>
+      <p class="section-sub">按国家分组,点开每天可以看今日路线和一键导航</p>
+      <div class="subtabs" id="countryTabs"></div>
+      <div id="daysList"></div>
+    </section>
+  </div>
+
+  <!-- ============ 天气 ============ -->
+  <div class="panel" id="panel-weather">
+    <section class="section">
+      <h2>天气预报</h2>
+      <p class="section-sub" id="wxSub">正在加载…</p>
+      <div class="pack-tools"><button class="btn" id="wxRefresh">🔄 刷新预报</button></div>
+      <div id="weatherList"></div>
+    </section>
+  </div>
+
+  <!-- ============ 打包清单 ============ -->
+  <div class="panel" id="panel-packing">
+    <section class="section">
+      <h2>打包清单</h2>
+      <p class="section-sub">40L 背包 ×2,横跨墨西哥干热、安第斯高原、亚马逊雨林、巴塔哥尼亚寒风四种气候,靠分层穿衣系统解决,不是靠带更多衣服</p>
+      <div class="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="packProgressFill"></div></div>
+        <div class="progress-label" id="packProgressLabel">0 / 0</div>
+      </div>
+      <div class="pack-tools">
+        <button class="btn" id="packModeBtn">☑ 多选模式</button>
+        <button class="btn" id="packTodoBtn">只看没备好的</button>
+      </div>
+      <div id="packingList"></div>
+      <div class="pack-bar" id="packBar">
+        <span id="packBarCount">已选 0 项</span>
+        <button class="go" id="packBarDone">✓ 标记已备好</button>
+        <button id="packBarUndo">↺ 取消已备好</button>
+        <button id="packBarClear">清除选择</button>
+      </div>
+      <p class="todo-sync-note" id="packSyncNote"></p>
+    </section>
+  </div>
+
+  <!-- ============ 待办 ============ -->
+  <div class="panel" id="panel-todos">
+    <section class="section">
+      <h2>待办清单</h2>
+      <p class="section-sub">两人共用,谁划掉都会同步</p>
+      <div class="progress-wrap">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">0 / 0</div>
+      </div>
+      <div id="todoList"></div>
+      <p class="todo-sync-note" id="todoSyncNote"></p>
+    </section>
+  </div>
+
+  <!-- ============ 贴士 ============ -->
+  <div class="panel" id="panel-tips">
+    <section class="section">
+      <h2>实用贴士</h2>
+      <div class="tip-grid">
+        <div class="tip-block">
+          <h3>货币与花费</h3>
+          <p>沿途经过墨西哥比索(MXN)、秘鲁索尔(PEN)、智利比索(CLP)、阿根廷比索(ARS)四种货币。阿根廷现金汇率通常比刷卡划算,建议入境后在正规渠道换一些现金零用,大额消费优先用 Wise / 信用卡。</p>
+        </div>
+        <div class="tip-block">
+          <h3>海拔与身体</h3>
+          <p>库斯科(3400m)、马丘比丘、惠曼塔湖(4200m)都在高海拔区域,抵达当天尽量放慢节奏、多喝水,提前备好高反药和肠胃炎药。百内三塔峰(10h)和菲茨罗伊(9–11h)两个大徒步日强度很高,注意补给和防风防晒。</p>
+        </div>
+        <div class="tip-block">
+          <h3>行李提醒</h3>
+          <ul>
+            <li>表格记录 Volaris(MEX→LIM)、Sky 两段、LATAM(PEM→PNT)都是 Basic 票,不含手提行李;两个 40L 背包要当手提的话,出发前在航司官网加购,现场买通常更贵</li>
+            <li>FTE→BA(11.23,AR1851)不含托运行李;BA↔伊瓜苏(JetSmart)只含随身小包</li>
+            <li>回程 SCL→墨尔本只含随身小包 + 小尺寸手提(订单写每件≤12kg、25×35×55cm),不含托运</li>
+            <li>进雨林只带必需品,主行李寄存在 JunglePro 办公室,避免拉杆箱</li>
+            <li>回程弃乘悉尼段,建议尽量只带手提行李</li>
+          </ul>
+        </div>
+        <div class="tip-block">
+          <h3>提前预订清单</h3>
+          <ul>
+            <li>Home in Cusco(11.8–10)订单还在 pending,记得跟进</li>
+            <li>两个 Free Tour(墨西哥城 10.22、瓦哈卡 10.29)确认已订</li>
+            <li>Humantay 一日团、钦切罗 / Moray / Maras 包车</li>
+            <li>百内国家公园 BusSur 接驳车、冰川团/门票</li>
+            <li>Don Julio 牛排馆订位(提前两周)、快艇冲瀑布 Gran Aventura</li>
+          </ul>
+        </div>
+        <div class="tip-block">
+          <h3>关于最后一程</h3>
+          <p>回程机票是圣地亚哥经停后到悉尼,计划在经停点墨尔本直接下机(表格记录 11/30 05:25 到),不再飞悉尼那一段。这属于「隐藏城市票」操作:托运行李默认会挂到悉尼,建议尽量只带手提行李登机,并留意值机与登机口是否有异常提示。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="footer-note">Iris &amp; Zhenzhen · 2026.10.21 – 11.29 · 本页面信息以实际出票 / 订单为准</p>
 </div>
 
 <script>
-const DATA = {"flights": [{"id": "f1", "date": "2026-10-21", "route": "墨尔本 MEL → 洛杉矶 LAX → 墨西哥城 MEX", "detail": "Delta/Aeromexico DL12+DL7951 · 11:00 起飞 → 17:00 到达(当地时间,含LAX转机4h40m)", "status": "confirmed", "dep": "2026-10-21T11:00:00+11:00", "depCity": "墨尔本"}, {"id": "f2", "date": "2026-11-04", "route": "墨西哥城 MEX → 利马 LIM", "detail": "Volaris Y43918 · 22:00 起飞 → 次日04:55到达 · 红眼航班", "status": "confirmed", "dep": "2026-11-04T22:00:00-06:00", "depCity": "墨西哥城"}, {"id": "f3", "date": "2026-11-05", "route": "利马 LIM → 库斯科 CUZ", "detail": "Sky Airline H25721 · 08:00 - 09:25", "status": "confirmed", "dep": "2026-11-05T08:00:00-05:00", "depCity": "利马"}, {"id": "f4", "date": "2026-11-12", "route": "库斯科 CUZ → 马尔多纳多港 PEM", "detail": "Sky Airline H25721 · 10:05 - 11:10", "status": "confirmed", "dep": "2026-11-12T10:05:00-05:00", "depCity": "库斯科"}, {"id": "f5", "date": "2026-11-14", "route": "马尔多纳多港 PEM → 纳塔莱斯港 PNT", "detail": "LATAM · 2次经停(利马/圣地亚哥)· 14:35起飞 → 次日09:08到达 · 全程16.5小时", "status": "confirmed", "dep": "2026-11-14T14:35:00-05:00", "depCity": "马尔多纳多港"}, {"id": "f6", "date": "2026-11-23", "route": "埃尔卡拉法特 FTE → 布宜诺斯艾利斯 AEP", "detail": "Aerolíneas Argentinas · 20:45 - 23:45 · Amex已预付,尚待补充电子票", "status": "pending", "dep": "2026-11-23T20:45:00-03:00", "depCity": "埃尔卡拉法特"}, {"id": "f7", "date": "2026-11-26", "route": "布宜诺斯艾利斯 AEP → 伊瓜苏 IGR", "detail": "JetSmart Airlines JA3140 · 06:10 - 08:03(1h53m)", "status": "confirmed", "dep": "2026-11-26T06:10:00-03:00", "depCity": "布宜诺斯艾利斯"}, {"id": "f8", "date": "2026-11-27", "route": "伊瓜苏 IGR → 布宜诺斯艾利斯 AEP", "detail": "JetSmart Airlines JA3151 · 22:18 - 次日00:19(2h1m)", "status": "confirmed", "dep": "2026-11-27T22:18:00-03:00", "depCity": "伊瓜苏"}, {"id": "f9", "date": "2026-11-28", "route": "布宜诺斯艾利斯 AEP → 圣地亚哥 SCL", "detail": "LATAM LA454 · 15:50 - 18:06 · 提前到机场,AEP海关窗口少速度慢", "status": "confirmed", "dep": "2026-11-28T15:50:00-03:00", "depCity": "布宜诺斯艾利斯"}, {"id": "f10", "date": "2026-11-29", "route": "圣地亚哥 SCL → 墨尔本 MEL(经停,弃乘后段悉尼)", "detail": "LATAM/Qantas · 01:30起飞 · 预计当地时间下午抵达墨尔本(以航司确认为准,状态:待航司确认)", "status": "pending", "dep": "2026-11-29T01:30:00-03:00", "depCity": "圣地亚哥"}], "stays": [{"city": "墨西哥城", "name": "Nuevo León 公寓(Jim)", "checkin": "2026-10-21", "checkout": "2026-10-23", "addr": "Avenida Nuevo León, Mexico City", "status": "confirmed", "region": "mx"}, {"city": "瓜纳华托", "name": "Casa Saucillo66", "checkin": "2026-10-23", "checkout": "2026-10-25", "addr": "Saucillo 66, Guanajuato", "status": "confirmed", "region": "mx"}, {"city": "圣米格尔德阿连德", "name": "Nuño", "checkin": "2026-10-25", "checkout": "2026-10-26", "addr": "Jaime Nuno, San Miguel de Allende", "status": "confirmed", "region": "mx"}, {"city": "墨西哥城", "name": "Nuevo León 公寓(Jim)", "checkin": "2026-10-26", "checkout": "2026-10-28", "addr": "Avenida Nuevo León, Mexico City", "status": "confirmed", "region": "mx"}, {"city": "瓦哈卡", "name": "Casa Rosa", "checkin": "2026-10-29", "checkout": "2026-10-31", "addr": "Manuel Sabino Crespo 300, Centro, Oaxaca", "status": "confirmed", "region": "mx"}, {"city": "瓦哈卡", "name": "Casa Ivonne", "checkin": "2026-10-31", "checkout": "2026-11-02", "addr": "Venustiano Carranza 806, Oaxaca", "status": "confirmed", "region": "mx"}, {"city": "墨西哥城", "name": "Nuevo León 公寓(Jim)", "checkin": "2026-11-03", "checkout": "2026-11-04", "addr": "Avenida Nuevo León, Mexico City", "status": "confirmed", "region": "mx"}, {"city": "库斯科", "name": "Lucrepata 公寓(景观studio)", "checkin": "2026-11-05", "checkout": "2026-11-09", "addr": "Urbanización Lucrepata F15, Cusco", "status": "confirmed", "region": "pe"}, {"city": "马丘比丘 / 热水镇", "name": "待预订", "checkin": "2026-11-08", "checkout": "2026-11-10", "addr": "Aguas Calientes", "status": "pending", "region": "pe"}, {"city": "库斯科", "name": "Casita Azul(San Blas)", "checkin": "2026-11-10", "checkout": "2026-11-12", "addr": "Atoqsaycuchi 605, San Blas, Cusco", "status": "confirmed", "region": "pe"}, {"city": "马尔多纳多港", "name": "Finca Sachavacayoc Lodge(Jungle Pro)", "checkin": "2026-11-12", "checkout": "2026-11-14", "addr": "Tambopata National Reserve, Madre de Dios", "status": "confirmed", "region": "pe"}, {"city": "纳塔莱斯港", "name": "Cosy Room 3", "checkin": "2026-11-15", "checkout": "2026-11-18", "addr": "Esmeralda 1435, Puerto Natales", "status": "confirmed", "region": "pt"}, {"city": "埃尔卡拉法特", "name": "Patagonia Wumul", "checkin": "2026-11-18", "checkout": "2026-11-20", "addr": "Cambaceres 246, El Calafate", "status": "confirmed", "region": "pt"}, {"city": "埃尔查尔滕", "name": "Terra Loft", "checkin": "2026-11-20", "checkout": "2026-11-23", "addr": "Avda costanera sur, El Chaltén", "status": "confirmed", "region": "pt"}, {"city": "布宜诺斯艾利斯", "name": "Palermo Soho Studio", "checkin": "2026-11-23", "checkout": "2026-11-26", "addr": "Paraguay 4818, Palermo, Buenos Aires", "status": "confirmed", "region": "ar"}, {"city": "伊瓜苏", "name": "Casa 24 Puerto Iguazú", "checkin": "2026-11-26", "checkout": "2026-11-27", "addr": "Misiones 24, Puerto Iguazú", "status": "confirmed", "region": "ar"}, {"city": "布宜诺斯艾利斯", "name": "Güemes 公寓(近La Rural)", "checkin": "2026-11-27", "checkout": "2026-11-28", "addr": "Güemes 4527, Buenos Aires", "status": "confirmed", "region": "ar"}], "days": [{"n": 1, "date": "2026-10-21", "city": "墨西哥城", "region": "mx", "title": "出发日 · 抵达墨西哥城", "items": [["11:00", "墨尔本起飞(MEL→LAX→MEX,经洛杉矶转机)", false], ["17:00", "抵达墨西哥城,出境", false], ["17:50", "机场换汇/取现", false], ["18:30", "打车到住处,放行李休息", false]], "transport": "国际航班 MEL–LAX–MEX(Delta/Aeromexico)", "stayRef": 0, "mapQuery": "Avenida Nuevo León, Mexico City", "tip": "出关后在机场先用Wise/现金换一点比索应急,再打车去住处。"}, {"n": 2, "date": "2026-10-22", "city": "墨西哥城", "region": "mx", "title": "老城地标 & 市场", "items": [["上午", "本地市场 city walk", false], ["下午", "宪法广场周边:国家宫、大神庙 Templo Mayor、主座教堂、艺术宫、国家美术馆", false], ["晚上", "Lucha Libre 摔跤表演(可选)", true]], "transport": null, "stayRef": 0, "mapQuery": "Zócalo, Mexico City", "stops": ["Palacio Nacional, Mexico City", "Templo Mayor Museum", "Catedral Metropolitana, Mexico City", "Palacio de Bellas Artes"], "tip": "摔跤表演门票建议当天上午在网上订。"}, {"n": 3, "date": "2026-10-23", "city": "瓜纳华托", "region": "mx", "title": "大巴前往瓜纳华托", "items": [["06:20", "墨西哥城北站 Terminal Norte 出发(Primera Plus / ETN)", true], ["11:05", "抵达瓜纳华托,入住 Casa Saucillo66", false], ["下午/晚上", "自由活动", false]], "transport": "长途大巴 墨西哥城Norte → 瓜纳华托(约4h45m)", "stayRef": 1, "mapQuery": "Guanajuato, Mexico", "tip": "大巴票官网提前买有折扣,亡灵节前后是旺季建议提前锁票。"}, {"n": 4, "date": "2026-10-24", "city": "瓜纳华托", "region": "mx", "title": "彩色小镇自由日", "items": [["全天", "瓜纳华托大教堂、瓜纳华托大学、接吻巷、剧院", false], ["傍晚", "皮皮拉山顶观景台看日夜全景", false]], "transport": null, "stayRef": 1, "mapQuery": "Monumento al Pípila, Guanajuato", "tip": "《寻梦环游记》取景地,巷子多台阶,建议穿好走的鞋。"}, {"n": 5, "date": "2026-10-25", "city": "圣米格尔德阿连德", "region": "mx", "title": "大巴前往圣米格尔", "items": [["07:10", "瓜纳华托出发(约1.5h车程)", true], ["08:30", "抵达圣米格尔,入住 Nuño", false], ["全天", "小镇漫步,粉色教堂 Parroquia de San Miguel Arcángel", false]], "transport": "长途大巴 瓜纳华托 → 圣米格尔", "stayRef": 2, "mapQuery": "Parroquia de San Miguel Arcángel", "tip": "半天可逛完,粉色教堂是打卡重点。"}, {"n": 6, "date": "2026-10-26", "city": "墨西哥城", "region": "mx", "title": "返回墨西哥城", "items": [["上午", "圣米格尔自由活动", false], ["16:30", "大巴返回墨西哥城北站", true], ["20:20", "抵达墨西哥城,入住老地方", false]], "transport": "长途大巴 圣米格尔 → 墨西哥城Norte", "stayRef": 3, "mapQuery": "Avenida Nuevo León, Mexico City", "tip": null}, {"n": 7, "date": "2026-10-27", "city": "墨西哥城", "region": "mx", "title": "特奥蒂瓦坎金字塔", "items": [["上午", "大巴前往特奥蒂瓦坎金字塔(建议10点前到,人少)", false], ["下午", "金字塔2号门出来坐大巴到Indios Verdes,转 Cablebús 缆车看彩色社区", false]], "transport": "大巴 Autobuses del Norte → 金字塔(约1h,每10分钟一班)", "stayRef": 3, "mapQuery": "Teotihuacan", "tip": "世界第三大金字塔,两千年古文明遗址,建议做好防晒。"}, {"n": 8, "date": "2026-10-28", "city": "墨西哥城", "region": "mx", "title": "CDMX 南区 & 夜巴去瓦哈卡", "items": [["清晨", "霍奇米尔科 Xochimilco 日出皮划艇", false], ["上午", "弗里达故居 Frida Kahlo 博物馆(蓝房子)", true], ["下午", "科约阿坎 Coyoacán 老城", false], ["23:59", "TAPO 汽车站坐夜巴前往瓦哈卡(ADO Platino)", true]], "transport": "夜巴 墨西哥城TAPO → 瓦哈卡(23:59–次日07:00)", "stayRef": null, "mapQuery": "Frida Kahlo Museum", "stops": ["Xochimilco, Mexico City", "Frida Kahlo Museum", "Coyoacán, Mexico City"], "tip": "⚠️ 弗里达故居周一闭馆(本次周三去没问题),票每天限量务必提前官网订;夜巴也建议提前订好座位。"}, {"n": 9, "date": "2026-10-29", "city": "瓦哈卡", "region": "mx", "title": "抵达瓦哈卡 · 亡灵节前奏", "items": [["07:00", "抵达瓦哈卡,入住 Casa Rosa", false], ["白天", "老城自由活动,感受亡灵节氛围", false]], "transport": null, "stayRef": 4, "mapQuery": "Centro, Oaxaca", "tip": "亡灵节(10.31–11.2)是瓦哈卡最热闹的时间,万寿菊会铺满全城。"}, {"n": 10, "date": "2026-10-30", "city": "瓦哈卡", "region": "mx", "title": "瓦哈卡自由日", "items": [["全天", "自由活动,老城闲逛", false]], "transport": null, "stayRef": 4, "mapQuery": "Centro, Oaxaca", "tip": null}, {"n": 11, "date": "2026-10-31", "city": "瓦哈卡", "region": "mx", "title": "亡灵节游行 D1", "items": [["早上", "退房,搬去 Casa Ivonne", false], ["上午/下午", "亡灵节游行(Comparsas)", false]], "transport": null, "stayRef": 5, "mapQuery": "Venustiano Carranza 806, Oaxaca", "tip": "⚠️ 亡灵节期间人潮拥挤,贵重物品注意保管。"}, {"n": 12, "date": "2026-11-01", "city": "瓦哈卡", "region": "mx", "title": "亡灵节 D2 · 墓园守夜", "items": [["白天", "亡灵节游行继续", false], ["晚上", "Xoxocotlán 墓园守夜(需要打车前往)", true]], "transport": null, "stayRef": 5, "mapQuery": "Panteón de Xoxocotlán", "tip": "⚠️ 墓园守夜人车都非常多,建议提前约好往返车辆,不要临时打车。"}, {"n": 13, "date": "2026-11-02", "city": "瓦哈卡", "region": "mx", "title": "夜巴返回墨西哥城", "items": [["白天", "退房,瓦哈卡自由活动", false], ["23:59", "ADO Platino 夜巴返回墨西哥城TAPO", true]], "transport": "夜巴 瓦哈卡 → 墨西哥城TAPO(23:59–次日07:00)", "stayRef": null, "mapQuery": "Oaxaca ADO bus station", "tip": "⚠️ 亡灵节假期结束返程票紧张,建议尽早锁票。"}, {"n": 14, "date": "2026-11-03", "city": "墨西哥城", "region": "mx", "title": "人类学博物馆", "items": [["07:00", "抵达墨西哥城,入住老地方放行李", false], ["09:00–17:00", "国立人类学博物馆(至少安排半天)", true], ["下午", "Roma Norte 城区漫步", false]], "transport": null, "stayRef": 6, "mapQuery": "Museo Nacional de Antropología", "tip": "周一闭馆,本次周二去没问题;馆藏丰富建议预留至少3小时。"}, {"n": 15, "date": "2026-11-04", "city": "墨西哥城", "region": "mx", "title": "飞往利马", "items": [["白天", "墨西哥城自由活动,收拾行李", false], ["19:00", "前往机场", false], ["22:00", "红眼航班飞利马(MEX→LIM)", false]], "transport": "国际航班 MEX→LIM(Volaris)· 22:00–次日04:55", "stayRef": null, "mapQuery": "Mexico City International Airport", "tip": null}, {"n": 16, "date": "2026-11-05", "city": "库斯科", "region": "pe", "title": "抵达库斯科", "items": [["04:55", "抵达利马", false], ["08:00", "转机飞库斯科(LIM→CUZ)", false], ["09:25", "抵达库斯科,入住", false], ["当天", "库斯科 city walk,顺路预订马丘比丘团", true]], "transport": "国内航班 LIM→CUZ(Sky Airline)", "stayRef": 7, "mapQuery": "Plaza de Armas, Cusco", "tip": "⚠️ 抵达高海拔城市(3400m),当天尽量慢走少剧烈活动,防高反。"}, {"n": 17, "date": "2026-11-06", "city": "库斯科", "region": "pe", "title": "萨克塞瓦曼 & 皮萨克", "items": [["上午", "城内 Sacsayhuamán 石头城遗迹(可选)", false], ["下午", "城外皮萨克 Pisac 小镇,灵修市集淘货", false]], "transport": null, "stayRef": 7, "mapQuery": "Pisac, Peru", "tip": null}, {"n": 18, "date": "2026-11-07", "city": "库斯科", "region": "pe", "title": "惠曼塔湖徒步", "items": [["全天", "Laguna Humantay 徒步(单程40min–1h,海拔约4200m)", false]], "transport": null, "stayRef": 7, "mapQuery": "Laguna Humantay", "tip": "⚠️ 高海拔徒步,提前吃高反药、带足水和防晒。"}, {"n": 19, "date": "2026-11-08", "city": "热水镇", "region": "pe", "title": "火车前往马丘比丘镇", "items": [["当天", "库斯科坐火车前往 Aguas Calientes(热水镇),入住", true]], "transport": "火车 库斯科 → 热水镇", "stayRef": 8, "mapQuery": "Aguas Calientes, Peru", "tip": "⚠️ 火车票 + 马丘比丘门票均需提前预订,建议现在就订。"}, {"n": 20, "date": "2026-11-09", "city": "马丘比丘", "region": "pe", "title": "马丘比丘 D1", "items": [["全天", "马丘比丘遗迹游览(local tour)", true]], "transport": null, "stayRef": 8, "mapQuery": "Machu Picchu", "tip": "⚠️ 门票+入园时段均限流,11月虽非最旺季但仍建议提前1-2个月订。"}, {"n": 21, "date": "2026-11-10", "city": "库斯科", "region": "pe", "title": "马丘比丘 D2 · 返回库斯科", "items": [["上午", "马丘比丘第二天游览/晨间日出", true], ["下午", "火车返回库斯科,入住 San Blas 公寓", false]], "transport": "火车 热水镇 → 库斯科", "stayRef": 9, "mapQuery": "San Blas, Cusco", "tip": null}, {"n": 22, "date": "2026-11-11", "city": "库斯科", "region": "pe", "title": "库斯科自由日", "items": [["全天", "City walk,收拾行李准备去雨林", false]], "transport": null, "stayRef": 9, "mapQuery": "San Blas, Cusco", "tip": null}, {"n": 23, "date": "2026-11-12", "city": "马尔多纳多港", "region": "pe", "title": "飞往亚马逊雨林", "items": [["10:05", "库斯科飞马尔多纳多港(CUZ→PEM)", false], ["11:10", "机场有JunglePro举牌接机,行李寄存办公室(只带雨林所需物品,避免拉杆箱)", false], ["下午/晚上", "Finca Sachavacayoc Lodge · 雨林徒步", false]], "transport": "国内航班 CUZ→PEM(Sky Airline)", "stayRef": 10, "mapQuery": "Puerto Maldonado, Peru", "tip": "Tambopata国家保护区,全程含餐+向导+船运,已确认预订。"}, {"n": 24, "date": "2026-11-13", "city": "马尔多纳多港", "region": "pe", "title": "雨林 D2", "items": [["04:00", "Clay Lick 看金刚鹦鹉", false], ["午餐", "雨林 lodge 用餐", false], ["下午", "Tres Chimbadas 湖(可选钓食人鱼)", false], ["晚上", "夜间丛林徒步", false]], "transport": null, "stayRef": 10, "mapQuery": "Puerto Maldonado, Peru", "tip": null}, {"n": 25, "date": "2026-11-14", "city": "纳塔莱斯港", "region": "pt", "title": "雨林 D3 · 飞往巴塔哥尼亚", "items": [["早上", "Canopy Walk 树冠walk,退还lodge装备", false], ["08:30", "离开lodge前往机场", false], ["14:35", "飞往纳塔莱斯港(经利马、圣地亚哥转机,全程16.5小时)", false]], "transport": "国际航班 PEM→LIM→SCL→PNT(LATAM)", "stayRef": null, "mapQuery": "Puerto Maldonado Airport", "tip": "⚠️ 全程16.5小时、跨3个国家两次转机,建议提前准备好转机文件和防寒衣物(南边天气骤降)。"}, {"n": 26, "date": "2026-11-15", "city": "纳塔莱斯港", "region": "pt", "title": "抵达纳塔莱斯港", "items": [["09:08", "抵达纳塔莱斯港,入住 Cosy Room 3", false], ["白天", "City walk,采购纪念品(Torres del Paine mágico 附近几家店值得逛)", false]], "transport": null, "stayRef": 11, "mapQuery": "Puerto Natales, Chile", "tip": null}, {"n": 27, "date": "2026-11-16", "city": "纳塔莱斯港", "region": "pt", "title": "牛角峰轻徒步", "items": [["07:00", "BusSur大巴前往百内公园Pudeto", true], ["全天", "牛角峰(Cuernos del Paine)+ Salto Grande瀑布轻徒步(往返8km,爬升150m,约3h)", false], ["14:30/19:30", "大巴返回纳塔莱斯港", false]], "transport": "BusSur 往返", "stayRef": 11, "mapQuery": "Salto Grande, Torres del Paine", "tip": "百内公园门票有效期3天,可以覆盖这两天徒步。⚠️ 旺季大巴建议提前订座。"}, {"n": 28, "date": "2026-11-17", "city": "纳塔莱斯港", "region": "pt", "title": "三塔峰大徒步", "items": [["07:00", "BusSur大巴前往 Laguna Amarga", true], ["全天", "Base Torres 三塔峰徒步(往返26km,爬升900m,全程约10小时)", false], ["20:00", "大巴返回纳塔莱斯港", false]], "transport": "BusSur 往返", "stayRef": 11, "mapQuery": "Mirador Las Torres", "tip": "⚠️ 全程10小时高强度徒步,务必早起、带足食水和保暖衣物。"}, {"n": 29, "date": "2026-11-18", "city": "埃尔卡拉法特", "region": "pt", "title": "跨境大巴前往卡拉法特", "items": [["07:00", "跨境大巴 纳塔莱斯港 → 埃尔卡拉法特(约6小时,含边境检查)", true], ["下午", "入住 Patagonia Wumul,Laguna Nimez 湿地看火烈鸟", false]], "transport": "跨境大巴(智利→阿根廷)", "stayRef": 12, "mapQuery": "Reserva Laguna Nimez", "tip": null}, {"n": 30, "date": "2026-11-19", "city": "埃尔卡拉法特", "region": "pt", "title": "莫雷诺冰川", "items": [["全天", "莫雷诺冰川:冰上徒步团 / 徒步+游船团 / 自驾三选一", true]], "transport": null, "stayRef": 12, "mapQuery": "Perito Moreno Glacier", "tip": "⚠️ 冰川国家公园门票 + 冰川团建议提前网上订,旺季名额有限。"}, {"n": 31, "date": "2026-11-20", "city": "埃尔查尔滕", "region": "pt", "title": "前往埃尔查尔滕", "items": [["08:00", "大巴前往埃尔查尔滕(约2.5h)", false], ["中午", "镇上吃饭,游客中心拿地图", false], ["下午", "短线徒步三选一:Mirador de los Cóndores / Cerro Paredón / Glaciar Huemul", false]], "transport": "大巴 埃尔卡拉法特 → 埃尔查尔滕", "stayRef": 13, "mapQuery": "El Chaltén, Argentina", "tip": null}, {"n": 32, "date": "2026-11-21", "city": "埃尔查尔滕", "region": "pt", "title": "菲茨罗伊三尖峰徒步", "items": [["全天", "Laguna de los Tres 徒步(往返25km,爬升1100m,用时9–11h)", false]], "transport": null, "stayRef": 13, "mapQuery": "Laguna de los Tres", "tip": "⚠️ 全程最重装徒步日,建议凌晨出发看日照金山。"}, {"n": 33, "date": "2026-11-22", "city": "埃尔查尔滕", "region": "pt", "title": "托雷峰徒步 或 漂流", "items": [["全天", "二选一:Laguna Torre 徒步(20km,8h)/ Las Vueltas 河漂流(3h,当地约更便宜)", false]], "transport": null, "stayRef": 13, "mapQuery": "Laguna Torre", "tip": null}, {"n": 34, "date": "2026-11-23", "city": "布宜诺斯艾利斯", "region": "ar", "title": "皮划艇 & 飞往BA", "items": [["清晨", "菲茨罗伊观景台日照金山", false], ["上午", "Laguna Condor 皮划艇(约20km)", false], ["17:00", "大巴返回埃尔卡拉法特机场", false], ["20:45", "飞往布宜诺斯艾利斯(FTE→AEP)", true]], "transport": "国内航班 FTE→AEP(待补充电子票)", "stayRef": 14, "mapQuery": "Palermo, Buenos Aires", "tip": "⚠️ 这段机票还没收到电子票,建议尽快补发确认信息。行李可提前存Paraguay 4591的We Luggage 或 Bounce。"}, {"n": 35, "date": "2026-11-24", "city": "布宜诺斯艾利斯", "region": "ar", "title": "经典地标 City Walk", "items": [["上午", "太平洋拱廊、五月广场、玫瑰宫总统府、科隆剧院(整点导览)", false], ["下午", "方尖碑、女人桥", false], ["晚饭", "Don Julio 牛排馆(帕勒莫,世界第一牛排馆)", true]], "transport": null, "stayRef": 14, "mapQuery": "Plaza de Mayo, Buenos Aires", "tip": "⚠️ Don Julio 一般要提前2周订位,建议尽快在App上蹲位。"}, {"n": 36, "date": "2026-11-25", "city": "布宜诺斯艾利斯", "region": "ar", "title": "帕勒莫 & 探戈之夜", "items": [["上午", "帕勒莫 Palermo 区漫步", false], ["下午", "San Telmo 市集", false], ["晚上", "探戈表演(推荐本地人常去的 Salón Marabú)", true]], "transport": null, "stayRef": 14, "mapQuery": "San Telmo, Buenos Aires", "tip": "BarSur需要提前预约且人均约120美金,Salón Marabú更本地、更便宜。"}, {"n": 37, "date": "2026-11-26", "city": "伊瓜苏", "region": "ar", "title": "伊瓜苏瀑布 · 巴西侧", "items": [["06:10", "飞往伊瓜苏(AEP→IGR,JetSmart JA3140)", false], ["09:00", "酒店寄存行李", false], ["09:30", "跨境大巴前往巴西侧国家公园(带护照)", true], ["10:45–14:15", "巴西侧栈道 + 魔鬼咽喉全景", false], ["14:30–17:30", "鸟园 Parque das Aves", false]], "transport": "跨境大巴(阿根廷→巴西)", "stayRef": 15, "mapQuery": "Parque Nacional do Iguaçu", "stops": ["Puerto Iguazú bus terminal", "Parque Nacional do Iguaçu", "Parque das Aves Foz do Iguaçu"], "tip": "⚠️ 过境记得带护照,上车前主动告知司机要过海关。"}, {"n": 38, "date": "2026-11-27", "city": "伊瓜苏", "region": "ar", "title": "伊瓜苏瀑布 · 阿根廷侧", "items": [["08:10", "国家公园开门,先坐生态小火车去魔鬼咽喉", false], ["10:15–11:30", "上层步道 Circuito Superior", false], ["12:45–15:00", "下层步道 Circuito Inferior", false], ["15:00", "快艇冲瀑布 Gran Aventura(可选)", true], ["17:30", "三国交界点 Hito Tres Fronteras", false], ["22:18", "飞回布宜诺斯艾利斯(IGR→AEP,JetSmart JA3151)", false]], "transport": "国内航班 IGR→AEP(JetSmart)", "stayRef": 16, "mapQuery": "Hito Tres Fronteras, Puerto Iguazú", "stops": ["Parque Nacional Iguazú Argentina", "Garganta del Diablo Iguazú", "Hito Tres Fronteras, Puerto Iguazú"], "tip": "快艇团建议当地官网 iguazujungle.com 提前订(9:00/10:15/11:30三个场次)。"}, {"n": 39, "date": "2026-11-28", "city": "布宜诺斯艾利斯", "region": "ar", "title": "雷科莱塔 & 飞往圣地亚哥", "items": [["上午", "雅典人书店、雷科莱塔墓地、周末手工市集", false], ["15:50", "飞往圣地亚哥(AEP→SCL)", false]], "transport": "国际航班 AEP→SCL(LATAM)", "stayRef": null, "mapQuery": "Recoleta Cemetery", "tip": "⚠️ AEP机场海关窗口少,建议提前2.5小时到机场。"}, {"n": 40, "date": "2026-11-29", "city": "回程", "region": "tr", "title": "飞回墨尔本", "items": [["01:30", "圣地亚哥起飞,经停后在墨尔本下机结束行程", false]], "transport": "国际航班 SCL→MEL(LATAM/Qantas,经停,弃乘后段悉尼)", "stayRef": null, "mapQuery": "Melbourne Airport", "tip": "⚠️ 计划在经停点墨尔本下机、放弃后段悉尼航段——这是隐藏城市票操作,托运行李默认挂到悉尼,建议尽量只带手提行李,并留意登机口是否有异常提示。"}], "events": [{"iso": "2026-10-21T11:00:00+11:00", "label": "✈️ 墨尔本 MEL → 洛杉矶 LAX → 墨西哥城 MEX", "city": "墨尔本", "mapQuery": null, "kind": "flight"}, {"iso": "2026-10-22T08:00:00-06:00", "label": "Day 2 · 老城地标 & 市场", "city": "墨西哥城", "mapQuery": "Zócalo, Mexico City", "kind": "day"}, {"iso": "2026-10-23T06:20:00-06:00", "label": "Day 3 · 大巴前往瓜纳华托", "city": "瓜纳华托", "mapQuery": "Guanajuato, Mexico", "kind": "day"}, {"iso": "2026-10-24T08:00:00-06:00", "label": "Day 4 · 彩色小镇自由日", "city": "瓜纳华托", "mapQuery": "Monumento al Pípila, Guanajuato", "kind": "day"}, {"iso": "2026-10-25T07:10:00-06:00", "label": "Day 5 · 大巴前往圣米格尔", "city": "圣米格尔德阿连德", "mapQuery": "Parroquia de San Miguel Arcángel", "kind": "day"}, {"iso": "2026-10-26T08:00:00-06:00", "label": "Day 6 · 返回墨西哥城", "city": "墨西哥城", "mapQuery": "Avenida Nuevo León, Mexico City", "kind": "day"}, {"iso": "2026-10-27T08:00:00-06:00", "label": "Day 7 · 特奥蒂瓦坎金字塔", "city": "墨西哥城", "mapQuery": "Teotihuacan", "kind": "day"}, {"iso": "2026-10-28T08:00:00-06:00", "label": "Day 8 · CDMX 南区 & 夜巴去瓦哈卡", "city": "墨西哥城", "mapQuery": "Frida Kahlo Museum", "kind": "day"}, {"iso": "2026-10-29T07:00:00-06:00", "label": "Day 9 · 抵达瓦哈卡 · 亡灵节前奏", "city": "瓦哈卡", "mapQuery": "Centro, Oaxaca", "kind": "day"}, {"iso": "2026-10-30T08:00:00-06:00", "label": "Day 10 · 瓦哈卡自由日", "city": "瓦哈卡", "mapQuery": "Centro, Oaxaca", "kind": "day"}, {"iso": "2026-10-31T08:00:00-06:00", "label": "Day 11 · 亡灵节游行 D1", "city": "瓦哈卡", "mapQuery": "Venustiano Carranza 806, Oaxaca", "kind": "day"}, {"iso": "2026-11-01T08:00:00-06:00", "label": "Day 12 · 亡灵节 D2 · 墓园守夜", "city": "瓦哈卡", "mapQuery": "Panteón de Xoxocotlán", "kind": "day"}, {"iso": "2026-11-02T08:00:00-06:00", "label": "Day 13 · 夜巴返回墨西哥城", "city": "瓦哈卡", "mapQuery": "Oaxaca ADO bus station", "kind": "day"}, {"iso": "2026-11-03T07:00:00-06:00", "label": "Day 14 · 人类学博物馆", "city": "墨西哥城", "mapQuery": "Museo Nacional de Antropología", "kind": "day"}, {"iso": "2026-11-04T08:00:00-06:00", "label": "Day 15 · 飞往利马", "city": "墨西哥城", "mapQuery": "Mexico City International Airport", "kind": "day"}, {"iso": "2026-11-04T22:00:00-06:00", "label": "✈️ 墨西哥城 MEX → 利马 LIM", "city": "墨西哥城", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-05T04:55:00-05:00", "label": "Day 16 · 抵达库斯科", "city": "库斯科", "mapQuery": "Plaza de Armas, Cusco", "kind": "day"}, {"iso": "2026-11-05T08:00:00-05:00", "label": "✈️ 利马 LIM → 库斯科 CUZ", "city": "利马", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-06T08:00:00-05:00", "label": "Day 17 · 萨克塞瓦曼 & 皮萨克", "city": "库斯科", "mapQuery": "Pisac, Peru", "kind": "day"}, {"iso": "2026-11-07T08:00:00-05:00", "label": "Day 18 · 惠曼塔湖徒步", "city": "库斯科", "mapQuery": "Laguna Humantay", "kind": "day"}, {"iso": "2026-11-08T08:00:00-05:00", "label": "Day 19 · 火车前往马丘比丘镇", "city": "热水镇", "mapQuery": "Aguas Calientes, Peru", "kind": "day"}, {"iso": "2026-11-09T08:00:00-05:00", "label": "Day 20 · 马丘比丘 D1", "city": "马丘比丘", "mapQuery": "Machu Picchu", "kind": "day"}, {"iso": "2026-11-10T08:00:00-05:00", "label": "Day 21 · 马丘比丘 D2 · 返回库斯科", "city": "库斯科", "mapQuery": "San Blas, Cusco", "kind": "day"}, {"iso": "2026-11-11T08:00:00-05:00", "label": "Day 22 · 库斯科自由日", "city": "库斯科", "mapQuery": "San Blas, Cusco", "kind": "day"}, {"iso": "2026-11-12T10:05:00-05:00", "label": "✈️ 库斯科 CUZ → 马尔多纳多港 PEM", "city": "库斯科", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-13T04:00:00-05:00", "label": "Day 24 · 雨林 D2", "city": "马尔多纳多港", "mapQuery": "Puerto Maldonado, Peru", "kind": "day"}, {"iso": "2026-11-14T08:00:00-03:00", "label": "Day 25 · 雨林 D3 · 飞往巴塔哥尼亚", "city": "纳塔莱斯港", "mapQuery": "Puerto Maldonado Airport", "kind": "day"}, {"iso": "2026-11-14T14:35:00-05:00", "label": "✈️ 马尔多纳多港 PEM → 纳塔莱斯港 PNT", "city": "马尔多纳多港", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-15T09:08:00-03:00", "label": "Day 26 · 抵达纳塔莱斯港", "city": "纳塔莱斯港", "mapQuery": "Puerto Natales, Chile", "kind": "day"}, {"iso": "2026-11-16T07:00:00-03:00", "label": "Day 27 · 牛角峰轻徒步", "city": "纳塔莱斯港", "mapQuery": "Salto Grande, Torres del Paine", "kind": "day"}, {"iso": "2026-11-17T07:00:00-03:00", "label": "Day 28 · 三塔峰大徒步", "city": "纳塔莱斯港", "mapQuery": "Mirador Las Torres", "kind": "day"}, {"iso": "2026-11-18T07:00:00-03:00", "label": "Day 29 · 跨境大巴前往卡拉法特", "city": "埃尔卡拉法特", "mapQuery": "Reserva Laguna Nimez", "kind": "day"}, {"iso": "2026-11-19T08:00:00-03:00", "label": "Day 30 · 莫雷诺冰川", "city": "埃尔卡拉法特", "mapQuery": "Perito Moreno Glacier", "kind": "day"}, {"iso": "2026-11-20T08:00:00-03:00", "label": "Day 31 · 前往埃尔查尔滕", "city": "埃尔查尔滕", "mapQuery": "El Chaltén, Argentina", "kind": "day"}, {"iso": "2026-11-21T08:00:00-03:00", "label": "Day 32 · 菲茨罗伊三尖峰徒步", "city": "埃尔查尔滕", "mapQuery": "Laguna de los Tres", "kind": "day"}, {"iso": "2026-11-22T08:00:00-03:00", "label": "Day 33 · 托雷峰徒步 或 漂流", "city": "埃尔查尔滕", "mapQuery": "Laguna Torre", "kind": "day"}, {"iso": "2026-11-23T08:00:00-03:00", "label": "Day 34 · 皮划艇 & 飞往BA", "city": "布宜诺斯艾利斯", "mapQuery": "Palermo, Buenos Aires", "kind": "day"}, {"iso": "2026-11-23T20:45:00-03:00", "label": "✈️ 埃尔卡拉法特 FTE → 布宜诺斯艾利斯 AEP", "city": "埃尔卡拉法特", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-24T08:00:00-03:00", "label": "Day 35 · 经典地标 City Walk", "city": "布宜诺斯艾利斯", "mapQuery": "Plaza de Mayo, Buenos Aires", "kind": "day"}, {"iso": "2026-11-25T08:00:00-03:00", "label": "Day 36 · 帕勒莫 & 探戈之夜", "city": "布宜诺斯艾利斯", "mapQuery": "San Telmo, Buenos Aires", "kind": "day"}, {"iso": "2026-11-26T06:10:00-03:00", "label": "✈️ 布宜诺斯艾利斯 AEP → 伊瓜苏 IGR", "city": "布宜诺斯艾利斯", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-27T08:10:00-03:00", "label": "Day 38 · 伊瓜苏瀑布 · 阿根廷侧", "city": "伊瓜苏", "mapQuery": "Hito Tres Fronteras, Puerto Iguazú", "kind": "day"}, {"iso": "2026-11-27T22:18:00-03:00", "label": "✈️ 伊瓜苏 IGR → 布宜诺斯艾利斯 AEP", "city": "伊瓜苏", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-28T08:00:00-03:00", "label": "Day 39 · 雷科莱塔 & 飞往圣地亚哥", "city": "布宜诺斯艾利斯", "mapQuery": "Recoleta Cemetery", "kind": "day"}, {"iso": "2026-11-28T15:50:00-03:00", "label": "✈️ 布宜诺斯艾利斯 AEP → 圣地亚哥 SCL", "city": "布宜诺斯艾利斯", "mapQuery": null, "kind": "flight"}, {"iso": "2026-11-29T01:30:00-03:00", "label": "✈️ 圣地亚哥 SCL → 墨尔本 MEL(经停,弃乘后段悉尼)", "city": "圣地亚哥", "mapQuery": null, "kind": "flight"}], "todos": [{"id": "t1", "text": "预订马丘比丘门票 + 进山小火车(11.8-9)", "urgent": true, "done": false}, {"id": "t2", "text": "预订/确认热水镇(Aguas Calientes)11.8-9住宿", "urgent": true, "done": false}, {"id": "t4", "text": "补充埃尔卡拉法特→BA机票电子票(11.23)", "urgent": true, "done": false}, {"id": "t6", "text": "预订瓦哈卡往返夜巴车票(10.28 & 11.2,ADO Platino)", "urgent": false, "done": false}, {"id": "t7", "text": "预订弗里达故居门票(10.28)", "urgent": false, "done": false}, {"id": "t8", "text": "预订百内国家公园 BusSur 车票(11.16 / 11.17)", "urgent": false, "done": false}, {"id": "t9", "text": "预订莫雷诺冰川团 或 租车(11.19)", "urgent": false, "done": false}, {"id": "t10", "text": "Don Julio 牛排馆订位(11.24,尽早蹲位)", "urgent": false, "done": false}, {"id": "t11", "text": "EVUS 更新(Iris)", "urgent": false, "done": false}, {"id": "t12", "text": "办好当地手机卡/eSIM", "urgent": false, "done": false}, {"id": "t13", "text": "备好高反药、肠胃炎药、Hydralyte", "urgent": false, "done": false}, {"id": "t14", "text": "准备当地现金(MXN / PEN / CLP / ARS)", "urgent": false, "done": false}, {"id": "t15", "text": "打印护照照片备份", "urgent": false, "done": false}, {"id": "t16", "text": "租车用的驾照国际翻译件(如需在埃尔卡拉法特自驾)", "urgent": false, "done": false}, {"id": "t17", "text": "快艇冲瀑布 Gran Aventura 提前订(iguazujungle.com)", "urgent": false, "done": false}]};
-const REGION_COLOR = {
-  mx:  {c:'var(--marigold)', hex:'#e0932c', name:'墨西哥'},
-  pe:  {c:'var(--clay)',     hex:'#c1440e', name:'秘鲁'},
-  pt:  {c:'var(--indigo)',   hex:'#35507a', name:'巴塔哥尼亚'},
-  ar:  {c:'var(--agave)',    hex:'#4f7942', name:'阿根廷东部'},
-  tr:  {c:'var(--transit)',  hex:'#8b7355', name:'转场/回程'}
+const DATA = {"flights": [{"id": "f1", "date": "2026-10-21", "route": "墨尔本 MEL → 洛杉矶 LAX → 墨西哥城 MEX", "detail": "Delta/Aeromexico DL12+DL7951 · 11:00 起飞 → 17:00 到达(当地时间,含LAX转机4h40m)", "status": "confirmed", "dep": "2026-10-21T11:00:00+11:00", "depCity": "墨尔本", "depMap": "Melbourne Airport", "note": "提前3小时到机场;洛杉矶转机4h40m,可去 Amex Lounge(Sidecar);护照、EVUS(Iris)备好。"}, {"id": "f2", "date": "2026-11-04", "route": "墨西哥城 MEX → 利马 LIM", "detail": "Volaris Y43918 · 22:00 起飞 → 次日04:55到达 · 红眼航班", "status": "confirmed", "dep": "2026-11-04T22:00:00-06:00", "depCity": "墨西哥城", "depMap": "Mexico City International Airport", "note": "红眼航班;Volaris Basic 票不含手提行李,确认已加购;国际航班留足办理时间。"}, {"id": "f3", "date": "2026-11-05", "route": "利马 LIM → 库斯科 CUZ", "detail": "Sky Airline H25721 · 08:00 - 09:25", "status": "confirmed", "dep": "2026-11-05T08:00:00-05:00", "depCity": "利马", "depMap": "Jorge Chávez International Airport, Lima", "note": "落地利马 04:55,转机约3小时;Sky Basic 票不含手提行李;抵达库斯科海拔3400m,慢走多喝水。"}, {"id": "f4", "date": "2026-11-12", "route": "库斯科 CUZ → 马尔多纳多港 PEM", "detail": "Sky Airline H25721 · 10:05 - 11:10", "status": "confirmed", "dep": "2026-11-12T10:05:00-05:00", "depCity": "库斯科", "depMap": "Alejandro Velasco Astete International Airport, Cusco", "note": "JunglePro 11:10 举牌接机;只带雨林必需品,主行李寄存办公室;Sky Basic 票注意行李额。"}, {"id": "f5", "date": "2026-11-14", "route": "马尔多纳多港 PEM → 纳塔莱斯港 PNT", "detail": "LATAM · 3段:PEM→LIM 14:35–16:10 / LIM→SCL 21:20–次日02:50 / SCL→PNT 05:50–09:08(11/15)· 全程16.5小时 · Basic 票不含手提行李", "status": "confirmed", "dep": "2026-11-14T14:35:00-05:00", "depCity": "马尔多纳多港", "depMap": "Padre Aldamiz International Airport, Puerto Maldonado", "note": "3段共16.5小时,Basic 票无手提行李;随身带保暖衣物(南边天气骤降)。"}, {"id": "f6", "date": "2026-11-23", "route": "埃尔卡拉法特 FTE → 布宜诺斯艾利斯 AEP", "detail": "Aerolíneas Argentinas AR1851 · 20:45 - 23:45(3h)· ⚠️ 不含托运行李", "status": "confirmed", "dep": "2026-11-23T20:45:00-03:00", "depCity": "埃尔卡拉法特", "depMap": "Comandante Armando Tola International Airport, El Calafate", "note": "不含托运行李,巴塔哥尼亚装备多,提前官网加购;17:00 大巴到机场,留足时间。"}, {"id": "f7", "date": "2026-11-26", "route": "布宜诺斯艾利斯 AEP → 伊瓜苏 IGR", "detail": "JetSmart Airlines JA3140 · 06:10 - 08:03(1h53m)", "status": "confirmed", "dep": "2026-11-26T06:10:00-03:00", "depCity": "布宜诺斯艾利斯", "depMap": "Aeroparque Jorge Newbery, Buenos Aires", "note": "JetSmart 只含随身小包;当天要过境去巴西侧,护照随身。"}, {"id": "f8", "date": "2026-11-27", "route": "伊瓜苏 IGR → 布宜诺斯艾利斯 AEP", "detail": "JetSmart Airlines JA3151 · 22:18 - 次日00:19(2h1m)", "status": "confirmed", "dep": "2026-11-27T22:18:00-03:00", "depCity": "伊瓜苏", "depMap": "Cataratas del Iguazú International Airport, Puerto Iguazú", "note": "JetSmart 只含随身小包;00:19 到 AEP,打车回 Güemes 公寓。"}, {"id": "f9", "date": "2026-11-28", "route": "布宜诺斯艾利斯 AEP → 圣地亚哥 SCL", "detail": "LATAM LA454 · 15:50 - 18:06 · 提前到机场,AEP海关窗口少速度慢", "status": "confirmed", "dep": "2026-11-28T15:50:00-03:00", "depCity": "布宜诺斯艾利斯", "depMap": "Aeroparque Jorge Newbery, Buenos Aires", "note": "AEP 海关窗口少速度慢,13:00 前到机场;18:06 抵 SCL 后约7.5小时转机。"}, {"id": "f10", "date": "2026-11-29", "route": "圣地亚哥 SCL → 墨尔本 MEL(经停,弃乘后段悉尼)", "detail": "LATAM LA805 + Qantas QF414 · 01:30 起飞 → 11/30 05:25 抵达墨尔本(经停点,在此下机),后段飞悉尼 09:00 弃乘 · 状态:待航司确认", "status": "pending", "dep": "2026-11-29T01:30:00-03:00", "depCity": "圣地亚哥", "depMap": "Arturo Merino Benítez International Airport, Santiago", "note": "01:30 起飞,经停墨尔本 05:25 下机(弃乘悉尼段);尽量只带手提行李,留意值机与登机口提示。"}], "stays": [{"city": "墨西哥城", "name": "Nuevo León 公寓(Jim)", "checkin": "2026-10-21", "checkout": "2026-10-23", "addr": "Avenida Nuevo León, Mexico City", "status": "confirmed", "region": "mx"}, {"city": "瓜纳华托", "name": "Casa Saucillo66", "checkin": "2026-10-23", "checkout": "2026-10-25", "addr": "Saucillo 66, Guanajuato", "status": "confirmed", "region": "mx"}, {"city": "圣米格尔德阿连德", "name": "Nuño", "checkin": "2026-10-25", "checkout": "2026-10-26", "addr": "Jaime Nuno, San Miguel de Allende", "status": "confirmed", "region": "mx", "cin": "15:00–22:00", "cout": "11:00"}, {"city": "墨西哥城", "name": "Nuevo León 公寓(Jim)", "checkin": "2026-10-26", "checkout": "2026-10-28", "addr": "Avenida Nuevo León, Mexico City", "status": "confirmed", "region": "mx"}, {"city": "瓦哈卡", "name": "Casa Rosa", "checkin": "2026-10-29", "checkout": "2026-10-31", "addr": "Manuel Sabino Crespo 300, Centro, Oaxaca", "status": "confirmed", "region": "mx", "cin": "15:00"}, {"city": "瓦哈卡", "name": "Casa Ivonne", "checkin": "2026-10-31", "checkout": "2026-11-02", "addr": "Venustiano Carranza 806, Oaxaca", "status": "confirmed", "region": "mx", "cin": "13:00"}, {"city": "墨西哥城", "name": "Nuevo León 公寓(Jim)", "checkin": "2026-11-03", "checkout": "2026-11-04", "addr": "Avenida Nuevo León, Mexico City", "status": "confirmed", "region": "mx"}, {"city": "皮萨克", "name": "Casa de Adela", "checkin": "2026-11-05", "checkout": "2026-11-06", "addr": "Av. Amazonas Lote I-30, Urb. Francisca Moya, Pisac, Calca, Cusco", "status": "confirmed", "region": "pe", "cin": "12:00", "cout": "13:00"}, {"city": "奥扬泰坦博", "name": "Habitación en Casa con historia", "checkin": "2026-11-06", "checkout": "2026-11-07", "addr": "Avenida Principal Casa Tejar, Ollantaytambo, Urubamba", "status": "confirmed", "region": "pe", "cin": "13:00", "cout": "11:00"}, {"city": "钦切罗", "name": "Q'aytu", "checkin": "2026-11-07", "checkout": "2026-11-08", "addr": "Calle Soctacucho, Urubamba Province, Cusco", "status": "confirmed", "region": "pe", "cin": "15:00", "cout": "10:00"}, {"city": "库斯科", "name": "Home in Cusco(Fabiana)", "checkin": "2026-11-08", "checkout": "2026-11-10", "addr": "Carmen Alto 254, San Blas, Cusco", "status": "pending", "region": "pe", "cin": "14:00", "cout": "11:00", "note": "订单待 host 确认(pending),没回应会自动退款"}, {"city": "库斯科", "name": "Casita Azul(San Blas)", "checkin": "2026-11-10", "checkout": "2026-11-12", "addr": "Atoqsaycuchi 605, San Blas, Cusco", "status": "confirmed", "region": "pe"}, {"city": "马尔多纳多港", "name": "Finca Sachavacayoc Lodge(Jungle Pro)", "checkin": "2026-11-12", "checkout": "2026-11-14", "addr": "Tambopata National Reserve, Madre de Dios", "status": "confirmed", "region": "pe"}, {"city": "纳塔莱斯港", "name": "Cosy Room 3", "checkin": "2026-11-15", "checkout": "2026-11-18", "addr": "Esmeralda 1435, Puerto Natales", "status": "confirmed", "region": "pt"}, {"city": "埃尔卡拉法特", "name": "Patagonia Wumul", "checkin": "2026-11-18", "checkout": "2026-11-20", "addr": "Cambaceres 246, El Calafate", "status": "confirmed", "region": "pt", "cin": "15:00–21:30", "cout": "08:00–10:00", "note": "只收现金,按美元结算(订单约 US$110),记得备好美元现金"}, {"city": "埃尔查尔滕", "name": "Terra Loft", "checkin": "2026-11-20", "checkout": "2026-11-23", "addr": "Avda costanera sur, El Chaltén", "status": "confirmed", "region": "pt"}, {"city": "布宜诺斯艾利斯", "name": "Palermo Soho Studio", "checkin": "2026-11-23", "checkout": "2026-11-26", "addr": "Paraguay 4818, Palermo, Buenos Aires", "status": "confirmed", "region": "ar"}, {"city": "伊瓜苏", "name": "Casa 24 Puerto Iguazú", "checkin": "2026-11-26", "checkout": "2026-11-27", "addr": "Misiones 24, Puerto Iguazú", "status": "confirmed", "region": "ar", "cin": "14:00–22:00", "cout": "07:00–10:00", "note": "入住前3天内房东会联系预付(约 US$41)"}, {"city": "布宜诺斯艾利斯", "name": "Güemes 公寓(近La Rural)", "checkin": "2026-11-27", "checkout": "2026-11-28", "addr": "Güemes 4527, Buenos Aires", "status": "confirmed", "region": "ar"}], "days": [{"n": 1, "date": "2026-10-21", "city": "墨西哥城", "region": "mx", "title": "出发日 · 抵达墨西哥城", "items": [["08:00", "到达墨尔本机场(MEL)", false, "Melbourne Airport"], ["11:00", "墨尔本起飞(MEL→LAX→MEX,经洛杉矶转机)", false], ["17:00", "抵达墨西哥城出境,换现金,买地铁票备用", false, "Mexico City International Airport"], ["17:50", "Wise 换现金", false], ["18:00", "Uber 去住处入住(楼里有 Drunken Dog 酒吧,按门铃 8)", false, "Avenida Nuevo León, Mexico City"], ["19:30", "晚饭:Campobaja 海鲜餐厅(Iris 已订位)", false, "Campobaja Mexico City"], ["21:30", "酒吧:Bar Mauro(待预订)或 TLECAN(无法预约)", true, "Bar Mauro Mexico City"]], "transport": "国际航班 MEL–LAX–MEX(Delta/Aeromexico)", "stayRef": 0, "mapQuery": "Avenida Nuevo León, Mexico City", "tip": "洛杉矶转机4h40m,可以去 Amex Lounge(Sidecar 不错),过安检后用 Amex app 查排队状态并加入等候名单。", "tz": "+11:00"}, {"n": 2, "date": "2026-10-22", "city": "墨西哥城", "region": "mx", "title": "老城地标 & 市场", "items": [["早饭", "Panadería Rosetta → Mercado San Juan", false, "Panadería Rosetta Mexico City"], ["超市", "Mamá Carmela 买早饭(周四 08:00–20:00)", false, "Mamá Carmela Mexico City"], ["上午", "La Merced 市场", false, "Mercado de La Merced, Mexico City"], ["14:15", "CDMX 地标 Free Tour(FreeTour 平台,Iris 预订,约至16:45):国家宫、大神庙、主座教堂、艺术宫、邮局博物馆、国家美术馆、国家图书馆、Diego 博物馆", true, "Zócalo, Mexico City"], ["晚饭", "Don Asado Rio Lerma(乌拉圭烤肉,未预约)", false, "Don Asado Río Lerma Mexico City"], ["19:30", "Handshake Speakeasy(官网已订,Iris)", false, "Handshake Speakeasy Mexico City"]], "transport": null, "stayRef": 0, "mapQuery": "Zócalo, Mexico City", "stops": ["Palacio Nacional, Mexico City", "Templo Mayor Museum", "Catedral Metropolitana, Mexico City", "Palacio de Bellas Artes"], "tip": "Free Tour 是自愿付小费的形式,备点比索零钱。Handshake Speakeasy 需提前14天订,已订好。", "tz": "-06:00"}, {"n": 3, "date": "2026-10-23", "city": "瓜纳华托", "region": "mx", "title": "大巴前往瓜纳华托", "items": [["06:20", "Primera Plus 大巴:墨西哥城 Norte 北站 → 瓜纳华托(已付款)", false, "Terminal de Autobuses del Norte, Mexico City", "Primera Plus 车票通常发车前30分钟开始扫码上车,行李额25kg;存好二维码。"], ["11:05", "抵达瓜纳华托,入住 Casa Saucillo66(可先放行李)", false, "Callejón del Saucillo 66, Guanajuato"], ["15:00", "Historical Downtown Tour(FreeTour 英文导览,已预订,至17:30):Calle Subterránea、Teatro Juárez、瓜纳华托大学、Plaza de la Paz", false, "Museo Iconográfico del Quijote, Guanajuato", "集合:塞万提斯雕像旁,深绿色雨伞;提前5分钟到;带水和防晒,穿舒服的鞋。"], ["18:00", "晚饭", false], ["晚上", "街上的现场音乐演出 Tour", false]], "transport": "长途大巴 墨西哥城Norte → 瓜纳华托(Primera Plus,06:20–11:05,已付款)", "stayRef": 1, "mapQuery": "Museo Iconográfico del Quijote, Guanajuato", "tip": "导览集合点:Museo Iconográfico del Quijote 外塞万提斯雕像旁,找深绿色雨伞,提前5分钟到,带水和防晒、穿舒服的鞋(随时可免费取消)。民宿在 Callejón del Saucillo #66(蓝色门面+木门+仙人掌,要爬36级台阶),用打车软件请选 Paseo de la Presa #71,会放你在巷子下面。", "tz": "-06:00", "stops": ["Callejón del Saucillo 66, Guanajuato", "Museo Iconográfico del Quijote, Guanajuato"]}, {"n": 4, "date": "2026-10-24", "city": "瓜纳华托", "region": "mx", "title": "彩色小镇自由日", "items": [["全天", "瓜纳华托大教堂、瓜纳华托大学、接吻巷、剧院", false], ["傍晚", "皮皮拉山顶观景台看日夜全景", false]], "transport": null, "stayRef": 1, "mapQuery": "Monumento al Pípila, Guanajuato", "tip": "《寻梦环游记》取景地,巷子多台阶,建议穿好走的鞋。", "tz": "-06:00"}, {"n": 5, "date": "2026-10-25", "city": "圣米格尔德阿连德", "region": "mx", "title": "大巴前往圣米格尔", "items": [["08:50", "Primera Plus 689次大巴,瓜纳华托出发(已出票)", false, "Central de Autobuses Guanajuato", "发车前30分钟扫码上车,行李额25kg;早饭在民宿附近吃。"], ["10:10", "抵达圣米格尔,先寄存行李 + City Walk(Nuño 15:00 起可入住)", false, "Jaime Nuno, San Miguel de Allende"], ["下午", "逛街,粉色教堂 Parroquia de San Miguel Arcángel", false, "Parroquia de San Miguel Arcángel"], ["18:00", "Tunki by Handshake 看日落(官网已订,ZZ)", false, "Tunki by Handshake San Miguel de Allende"]], "transport": "长途大巴 瓜纳华托 → 圣米格尔(Primera Plus,已出票)", "stayRef": 2, "mapQuery": "Parroquia de San Miguel Arcángel", "tip": "半天可逛完,粉色教堂是打卡重点。", "tz": "-06:00"}, {"n": 6, "date": "2026-10-26", "city": "墨西哥城", "region": "mx", "title": "返回墨西哥城", "items": [["上午", "圣米格尔自由活动,Nuño 11:00 前退房", false], ["15:45", "步行去大巴站(约25分钟)", false, "Central de Autobuses San Miguel de Allende"], ["16:30", "Primera Plus 201次大巴返回墨西哥城北站(已出票)", false, "Central de Autobuses San Miguel de Allende", "发车前30分钟扫码;晚饭在车上垫肚子。"], ["20:20", "抵达墨西哥城北站,回住处", false, "Avenida Nuevo León, Mexico City"], ["晚上", "酒吧:Bar Mauro 或 TLECAN(无法预约)", false]], "transport": "长途大巴 圣米格尔 → 墨西哥城Norte(Primera Plus,已出票)", "stayRef": 3, "mapQuery": "Avenida Nuevo León, Mexico City", "tip": null, "tz": "-06:00"}, {"n": 7, "date": "2026-10-27", "city": "墨西哥城", "region": "mx", "title": "人类学博物馆 & Roma Norte", "items": [["09:00", "国立人类学博物馆(开到17:00,至少预留半天)", false, "Museo Nacional de Antropología"], ["午饭", "博物馆餐厅吃饭", false], ["下午", "Roma Norte City Walk", false, "Roma Norte, Mexico City"], ["19:30", "Restaurante Rosetta(已订位)", false, "Rosetta Restaurante Mexico City"], ["晚上", "酒吧(待定)", false]], "transport": null, "stayRef": 3, "mapQuery": "Museo Nacional de Antropología", "tip": "人类学博物馆周一闭馆,周二开放,这天去没问题。", "tz": "-06:00", "stops": ["Museo Nacional de Antropología", "Roma Norte, Mexico City", "Rosetta Restaurante Mexico City"]}, {"n": 8, "date": "2026-10-28", "city": "墨西哥城", "region": "mx", "title": "CDMX 南区 & 夜巴去瓦哈卡", "items": [["04:30", "打车出门", false], ["05:00", "Xochimilco 日出船游(Airbnb 体验,已订,至09:30):看鸟、体验种地。带望远镜,穿长袖、戴帽子、涂防晒", false, "Xochimilco, Mexico City"], ["上午", "Coyoacán 老城", false, "Coyoacán, Mexico City"], ["下午", "Roma Norte City Walk", false, "Roma Norte, Mexico City"], ["23:30", "TAPO 汽车站坐夜巴去瓦哈卡(ADO Platino,已出票)", false, "TAPO Terminal de Autobuses de Pasajeros de Oriente, Mexico City", "票面时间仅作行政参考,当天有效;提前到站,存好二维码。"]], "transport": "夜巴 墨西哥城TAPO → 瓦哈卡(ADO Platino,23:30–次日06:30,已出票)", "stayRef": null, "mapQuery": "Xochimilco, Mexico City", "stops": ["Xochimilco, Mexico City", "Coyoacán, Mexico City", "Roma Norte, Mexico City", "TAPO Terminal de Autobuses de Pasajeros de Oriente, Mexico City"], "tip": "凌晨4:30就要出门,当天白天节奏会比较累。夜巴车票已出,记得存好二维码。", "tz": "-06:00"}, {"n": 9, "date": "2026-10-29", "city": "瓦哈卡", "region": "mx", "title": "抵达瓦哈卡 · 亡灵节前奏", "items": [["06:30", "夜巴抵达瓦哈卡大巴站,去 Airbnb 放行李(Casa Rosa 15:00 起可入住)", false, "ADO Terminal Oaxaca, 5 de Mayo 1018, Oaxaca"], ["09:00", "Free Oaxacava Tour(GuruWalk 平台,ZZ 预订,至11:30)", true], ["11:30", "Mercado 20 de Noviembre(至15:00)", false, "Mercado 20 de Noviembre Oaxaca"], ["15:30", "Casa Oaxaca El Restaurante(已订位,一定要刷 Amex 用 credits)", false, "Casa Oaxaca El Restaurante"], ["晚上", "City Walk", false]], "transport": null, "stayRef": 4, "mapQuery": "Centro, Oaxaca", "tip": "亡灵节(10.31–11.2)是瓦哈卡最热闹的时间,万寿菊会铺满全城。", "tz": "-06:00"}, {"n": 10, "date": "2026-10-30", "city": "瓦哈卡", "region": "mx", "title": "Hierve el Agua · 织布小镇 · Mezcal", "items": [["07:30", "Hierve el Agua 一日游(Airbnb Experience,Iris 预订,Amex 待还款):在 Jardín Etnobotánico 集合", false, "Jardín Etnobotánico de Oaxaca", "Tour 接送/集合;带泳衣、防晒、帽子、徒步鞋。"], ["全天", "瀑布边徒步、泳池游泳、本地家庭早餐(额外付费)、Teotitlán del Valle 羊毛地毯家庭、Mezcal 手工酒厂", false], ["16:40", "回到瓦哈卡", false]], "transport": "Tour 接送", "stayRef": 4, "mapQuery": "Hierve el Agua, Oaxaca", "tip": null, "tz": "-06:00", "stops": null}, {"n": 11, "date": "2026-10-31", "city": "瓦哈卡", "region": "mx", "title": "Monte Albán · 搬家 · 亡灵节墓园", "items": [["上午", "公交车去 Monte Albán 遗址", false, "Monte Albán, Oaxaca"], ["中午", "回瓦哈卡吃饭,买第二天早饭;退房搬去 Casa Ivonne 放行李(13:00 起可入住)", false, "Venustiano Carranza 806, Oaxaca"], ["17:00", "到达 Xoxo 的 Panteón Mictlancíhuatl 墓地(亡灵节,约17:00–18:00)", false, "Panteón Mictlancíhuatl Xoxo Oaxaca", "墓园人多车多,提前约好往返车辆;晚上偏凉带外套,贵重物品随身。"]], "transport": "公交车", "stayRef": 5, "mapQuery": "Monte Albán, Oaxaca", "tip": "⚠️ 亡灵节期间人潮拥挤,贵重物品注意保管。", "tz": "-06:00", "stops": null}, {"n": 12, "date": "2026-11-01", "city": "瓦哈卡", "region": "mx", "title": "亡灵节游行 · Jalatlaco", "items": [["白天", "自由休息(晚上要熬夜)", false], ["20:00", "到达 Jalatlaco,参加 Comparsa de Jalatlaco 亡灵节游行(约至24:00)", false, "Barrio de Jalatlaco, Oaxaca", "夜间人多,贵重物品随身,回住处注意安全。"]], "transport": null, "stayRef": 5, "mapQuery": "Barrio de Jalatlaco, Oaxaca", "tip": null, "tz": "-06:00", "stops": null}, {"n": 13, "date": "2026-11-02", "city": "瓦哈卡", "region": "mx", "title": "烹饪课 · 夜巴回墨西哥城", "items": [["08:30", "Quinta Brava 一日烹饪课(Iris WhatsApp 预订,MXN1440/人,未付款):酒店接送", false, "Quinta Brava Oaxaca"], ["10:30", "学做玉米早午餐", false], ["12:00", "学做3–4道菜的正餐", false], ["15:00", "课程结束,送回酒店", false], ["23:45", "ADO GL 夜巴返回墨西哥城(已付款)。问司机终点是否到 Norte,到的话不在 TAPO 下车,直接坐到 Norte", false, "ADO Terminal Oaxaca, 5 de Mayo 1018, Oaxaca", "亡灵节假期结束返程人多,提前到站。"]], "transport": "夜巴 瓦哈卡 → 墨西哥城(ADO GL,23:45–次日07:00,已付款)", "stayRef": null, "mapQuery": "Quinta Brava Oaxaca", "tip": "⚠️ 退房后行李寄存请提前跟房东确认(烹饪课 8:30 酒店接送,15:00 送回酒店)。", "tz": "-06:00", "stops": null}, {"n": 14, "date": "2026-11-03", "city": "墨西哥城", "region": "mx", "title": "金字塔 · 彩色缆车(待定)", "items": [["07:00", "夜巴抵达墨西哥城,回住处放行李", false, "Avenida Nuevo León, Mexico City"], ["上午", "日月金字塔:Autobuses del Norte 大巴(8号门进→售票处→8号通道→6号站台,每10分钟一班,约1h)", false, "Terminal de Autobuses del Norte, Mexico City"], ["下午", "特奥蒂瓦坎金字塔游览;可选:回程到 Indios Verdes 转 Cablebús 缆车看彩色社区", false, "Teotihuacan Pyramids"]], "transport": "大巴 Autobuses del Norte → 特奥蒂瓦坎(往返约150,表格记录)", "stayRef": 6, "mapQuery": "Teotihuacan", "tip": "表格这天还标着「日月金字塔?」,没最终定。刚下夜巴会比较累,按状态调整;建议10点前到、做好防晒。", "tz": "-06:00", "stops": null}, {"n": 15, "date": "2026-11-04", "city": "墨西哥城", "region": "mx", "title": "飞往利马", "items": [["白天", "墨西哥城 City Walk,收拾行李", false], ["19:30", "到机场(红眼航班飞利马)", false, "Mexico City International Airport", "Volaris Basic 票不含手提行李,确认已加购;国际航班留足办理时间。"], ["22:00", "红眼航班 MEX→LIM(Volaris)", false]], "transport": "国际航班 MEX→LIM(Volaris)· 22:00–次日04:55", "stayRef": null, "mapQuery": "Mexico City International Airport", "tip": null, "tz": "-06:00"}, {"n": 16, "date": "2026-11-05", "city": "皮萨克", "region": "pe", "title": "抵达库斯科 · 转皮萨克", "items": [["08:00", "利马飞库斯科(LIM→CUZ,Sky Airline)", false], ["09:25", "抵达库斯科:换汇,买「10天16景点」套票(130 sol/人,表格记录)", false, "Alejandro Velasco Astete International Airport, Cusco"], ["上午", "小巴去皮萨克(约1h)", false, "Pisac, Peru"], ["12:00", "入住 Casa de Adela", false, "Av. Amazonas Lote I-30, Pisac, Peru"], ["午饭", "Mercado Abastos Pisac", false, "Mercado de Pisac, Peru"], ["下午", "皮萨克小镇", false]], "transport": "国内航班 LIM→CUZ(Sky Airline)+ 陆路转皮萨克", "stayRef": 7, "mapQuery": "Pisac, Peru", "tip": "⚠️ 抵达高海拔地区(皮萨克约2970m),当天慢走少剧烈活动,防高反。套票覆盖的景点范围,买前跟售票处确认一下。", "tz": "-05:00", "stops": ["Cusco Airport", "Pisac ruins", "Pisac Market"]}, {"n": 17, "date": "2026-11-06", "city": "奥扬泰坦博", "region": "pe", "title": "皮萨克遗址 → 奥扬泰坦博", "items": [["上午", "Pisac 遗址:打车到山顶遗址,再徒步下山(需套票)", false, "Pisac Archaeological Park, Peru"], ["13:00", "Pisac 退房", false, "Av. Amazonas Lote I-30, Pisac, Peru"], ["午饭", "小巴到 Urubamba 午饭", false, "Urubamba, Peru"], ["下午", "小巴到奥扬泰坦博,入住 Habitación en Casa con historia(13:00 起),逛古城", false, "Avenida Principal Casa Tejar, Ollantaytambo, Peru"]], "transport": "打车 + 小巴 皮萨克 → 乌鲁班巴 → 奥扬泰坦博", "stayRef": 8, "mapQuery": "Ollantaytambo, Peru", "tip": null, "tz": "-05:00", "stops": ["Pisac ruins", "Urubamba, Peru", "Ollantaytambo Fortress"]}, {"n": 18, "date": "2026-11-07", "city": "钦切罗", "region": "pe", "title": "奥扬泰坦博 → Moray/Maras → 钦切罗", "items": [["上午", "奥扬泰坦博遗址(需套票),11:00 前退房", false, "Ollantaytambo Archaeological Park"], ["下午", "包车:Moray 梯田 + Maras 盐田 → 钦切罗", true, "Moray Archaeological Site"], ["15:00", "入住 Q'aytu(15:00 起),住本地纺织家庭", false, "calle Soctacucho, Chinchero, Peru"], ["晚上", "钦切罗小镇闲逛", false]], "transport": "小巴 + 包车 奥扬泰坦博 → Moray / Maras → 钦切罗", "stayRef": 9, "mapQuery": "Chinchero, Peru", "tip": "钦切罗海拔约3760m,比库斯科还高,注意高反。包车可以让奥扬泰坦博的住宿主人或当地司机帮忙联系,提前谈好价格。", "tz": "-05:00", "stops": ["Ollantaytambo, Peru", "Moray Archaeological Site", "Maras Salt Mines", "Chinchero, Peru"]}, {"n": 19, "date": "2026-11-08", "city": "库斯科", "region": "pe", "title": "钦切罗周日集市 → 库斯科", "items": [["10:00", "钦切罗退房,逛周日集市 Mercado Chinchero(行李寄存请提前跟 host 确认)", false, "Mercado de Chinchero, Peru"], ["下午", "钦切罗遗址(需套票)", false, "Chinchero Archaeological Site"], ["傍晚", "小巴返回库斯科,入住 Home in Cusco(14:00 起,待确认)", true, "Carmen Alto 254, San Blas, Cusco"], ["晚上", "库斯科吃晚饭", false]], "transport": "小巴 钦切罗 → 库斯科", "stayRef": 10, "mapQuery": "Carmen Alto 254, San Blas, Cusco", "tip": "⚠️ Home in Cusco(San Blas,Carmen Alto 254,圣布拉斯教堂旁)订单还是 pending,host 有响应时限,没回应会自动退款,记得跟进。从武器广场走过去约4分钟:沿 Plateros 一直走到 Cuesta San Blas,看到 San Blas 教堂后左转 Carmen Alto。", "tz": "-05:00", "stops": ["Chinchero, Peru", "Carmen Alto 254, San Blas, Cusco"]}, {"n": 20, "date": "2026-11-09", "city": "库斯科", "region": "pe", "title": "库斯科市区游览", "items": [["上午", "Saqsaywaman 石头城(可以找一个 Free Tour)", false, "Sacsayhuamán, Cusco"]], "transport": null, "stayRef": 10, "mapQuery": "Sacsayhuamán, Cusco", "tip": "Home in Cusco(11.8–10)订单还是 pending,记得跟进确认。", "tz": "-05:00", "stops": null}, {"n": 21, "date": "2026-11-10", "city": "库斯科", "region": "pe", "title": "库斯科周边 Tour · 搬去 San Blas", "items": [["早上", "转移行李:Home in Cusco 退房 → San Blas 公寓 Casita Azul", false, "Atoqsaycuchi 605, San Blas, Cusco"], ["全天", "二选一:彩虹山 Vinicunca 或 Laguna Humantay(高海拔徒步约1h)一日团", true, "Laguna Humantay"]], "transport": null, "stayRef": 11, "mapQuery": "Laguna Humantay", "tip": "⚠️ 彩虹山海拔约5000m,Humantay 约4200m,务必提前吃高反药、带足水和防晒、穿保暖衣物;一日团通常凌晨出发。", "tz": "-05:00", "stops": null}, {"n": 22, "date": "2026-11-11", "city": "库斯科", "region": "pe", "title": "库斯科自由日", "items": [["全天", "库斯科市区(表格这行是 Saqsaywaman,与 Nov 9 重复,可按需调整),收拾行李准备去雨林", false, "Plaza de Armas, Cusco"]], "transport": null, "stayRef": 11, "mapQuery": "Plaza de Armas, Cusco", "tip": null, "tz": "-05:00", "stops": null}, {"n": 23, "date": "2026-11-12", "city": "马尔多纳多港", "region": "pe", "title": "飞往亚马逊雨林", "items": [["10:05", "库斯科飞马尔多纳多港(CUZ→PEM,Sky Airline)", false], ["11:10", "抵达;JunglePro 举牌接机,主行李寄存办公室(只带雨林所需物品,避免拉杆箱)", false, "Padre Aldamiz International Airport, Puerto Maldonado"], ["下午", "jungle walk", false], ["晚饭", "lodge 吃", false], ["晚上", "jungle walk(夜间)", false]], "transport": "国内航班 CUZ→PEM(Sky Airline)", "stayRef": 12, "mapQuery": "Puerto Maldonado, Peru", "tip": "雨林团费用到达后现场付:刷卡 US$480/人;付美元现金 US$460/人(便宜约4%)。Tambopata 保护区,全程含餐+向导+船运,已确认预订。", "tz": "-05:00"}, {"n": 24, "date": "2026-11-13", "city": "马尔多纳多港", "region": "pe", "title": "雨林 D2", "items": [["04:00", "Clay Lick 看金刚鹦鹉", false], ["上午", "返回 lodge 休息", false], ["午饭", "lodge 吃", false], ["下午", "Tres Chimbadas 湖(可选钓食人鱼)", false], ["晚上", "Paddle Tour(夜间划船)", false]], "transport": null, "stayRef": 12, "mapQuery": "Puerto Maldonado, Peru", "tip": null, "tz": "-05:00"}, {"n": 25, "date": "2026-11-14", "city": "纳塔莱斯港", "region": "pt", "title": "雨林 D3 · 飞往巴塔哥尼亚", "items": [["早上", "Canopy Walk 树冠 walk,退还 lodge 装备", false], ["08:30", "离开 lodge 前往机场(约11:00–11:30 到机场)", false, "Padre Aldamiz International Airport, Puerto Maldonado"], ["14:35", "PEM→LIM(16:10 到)", false], ["21:20", "LIM→SCL(次日02:50 到)", false], ["次日05:50", "SCL→PNT(09:08 到纳塔莱斯港)", false]], "transport": "国际航班 PEM→LIM→SCL→PNT(LATAM)", "stayRef": null, "mapQuery": "Puerto Maldonado Airport", "tip": "⚠️ 全程16.5小时、跨3个国家两次转机,建议提前准备好转机文件和防寒衣物(南边天气骤降)。", "tz": "-03:00"}, {"n": 26, "date": "2026-11-15", "city": "纳塔莱斯港", "region": "pt", "title": "抵达纳塔莱斯港", "items": [["09:08", "抵达纳塔莱斯港,入住 Cosy Room 3", false], ["白天", "City walk,采购纪念品(Torres del Paine mágico 附近几家店值得逛)", false]], "transport": null, "stayRef": 13, "mapQuery": "Puerto Natales, Chile", "tip": null, "tz": "-03:00"}, {"n": 27, "date": "2026-11-16", "city": "纳塔莱斯港", "region": "pt", "title": "牛角峰轻徒步", "items": [["07:00", "BusSur大巴前往百内公园Pudeto", true, "Terminal de Buses Puerto Natales", "BusSur 往返约 US$18/段;百内门票约 AUD80,3天有效,出发前备好护照和现金。"], ["全天", "牛角峰(Cuernos del Paine)+ Salto Grande瀑布轻徒步(往返8km,爬升150m,约3h)", false], ["14:30/19:30", "大巴返回纳塔莱斯港", false]], "transport": "BusSur 往返", "stayRef": 13, "mapQuery": "Salto Grande, Torres del Paine", "tip": "百内公园门票有效期3天,可以覆盖这两天徒步。⚠️ 旺季大巴建议提前订座。", "tz": "-03:00"}, {"n": 28, "date": "2026-11-17", "city": "纳塔莱斯港", "region": "pt", "title": "三塔峰大徒步", "items": [["07:00", "BusSur大巴前往 Laguna Amarga", true, "Terminal de Buses Puerto Natales"], ["全天", "Base Torres 三塔峰徒步(往返26km,爬升900m,全程约10小时)", false], ["20:00", "大巴返回纳塔莱斯港", false]], "transport": "BusSur 往返", "stayRef": 13, "mapQuery": "Mirador Las Torres", "tip": "⚠️ 全程10小时高强度徒步,务必早起、带足食水和保暖衣物。", "tz": "-03:00"}, {"n": 29, "date": "2026-11-18", "city": "埃尔卡拉法特", "region": "pt", "title": "跨境大巴前往卡拉法特", "items": [["07:00", "跨境大巴 纳塔莱斯港 → 埃尔卡拉法特(约6小时,含边境检查)", true, "Terminal de Buses Puerto Natales", "跨境大巴含边境检查,约6小时;护照随身。"], ["下午", "入住 Patagonia Wumul,Laguna Nimez 湿地看火烈鸟", false]], "transport": "跨境大巴(智利→阿根廷)", "stayRef": 14, "mapQuery": "Reserva Laguna Nimez", "tip": null, "tz": "-03:00"}, {"n": 30, "date": "2026-11-19", "city": "埃尔卡拉法特", "region": "pt", "title": "莫雷诺冰川", "items": [["全天", "莫雷诺冰川:冰上徒步团 / 徒步+游船团 / 自驾三选一", true]], "transport": null, "stayRef": 14, "mapQuery": "Perito Moreno Glacier", "tip": "⚠️ 冰川国家公园门票 + 冰川团建议提前网上订,旺季名额有限。", "tz": "-03:00"}, {"n": 31, "date": "2026-11-20", "city": "埃尔查尔滕", "region": "pt", "title": "前往埃尔查尔滕", "items": [["08:00", "大巴前往埃尔查尔滕(约2.5h)", false, "Terminal de Ómnibus El Calafate"], ["中午", "镇上吃饭,游客中心拿地图", false], ["下午", "短线徒步三选一:Mirador de los Cóndores / Cerro Paredón / Glaciar Huemul", false]], "transport": "大巴 埃尔卡拉法特 → 埃尔查尔滕", "stayRef": 15, "mapQuery": "El Chaltén, Argentina", "tip": null, "tz": "-03:00"}, {"n": 32, "date": "2026-11-21", "city": "埃尔查尔滕", "region": "pt", "title": "菲茨罗伊三尖峰徒步", "items": [["全天", "Laguna de los Tres 徒步(往返25km,爬升1100m,用时9–11h)", false]], "transport": null, "stayRef": 15, "mapQuery": "Laguna de los Tres", "tip": "⚠️ 全程最重装徒步日,建议凌晨出发看日照金山。", "tz": "-03:00"}, {"n": 33, "date": "2026-11-22", "city": "埃尔查尔滕", "region": "pt", "title": "托雷峰徒步 或 漂流", "items": [["全天", "二选一:Laguna Torre 徒步(20km,8h)/ Las Vueltas 河漂流(3h,当地约更便宜)", false]], "transport": null, "stayRef": 15, "mapQuery": "Laguna Torre", "tip": null, "tz": "-03:00"}, {"n": 34, "date": "2026-11-23", "city": "布宜诺斯艾利斯", "region": "ar", "title": "皮划艇 & 飞往BA", "items": [["清晨", "Fitz Roy 观景台日照金山", false], ["09:00", "皮划艇:徒步出口附近的旅行社集合,乘车去 Laguna Condor 出发,向导带划约20km,中午河中岛午餐(向导做的牛排+蔬菜),约14:30回到镇上", true], ["17:00", "Chalten Travel 大巴 → 卡拉法特机场(19:20 到)", false, "Terminal de Ómnibus El Chaltén"], ["20:45", "飞往布宜诺斯艾利斯(FTE→AEP,AR1851)", false, "Comandante Armando Tola International Airport, El Calafate", "不含托运行李,提前官网加购;19:20 到机场,留足办理时间。"], ["23:45", "抵达AEP,前往帕勒莫住处", false]], "transport": "国内航班 FTE→AEP(Aerolíneas Argentinas AR1851)", "stayRef": 16, "mapQuery": "Palermo, Buenos Aires", "tip": "⚠️ 这班机票不含托运行李,建议官网提前加购行李额(现场买通常更贵)。", "tz": "-03:00"}, {"n": 35, "date": "2026-11-24", "city": "布宜诺斯艾利斯", "region": "ar", "title": "经典地标 · San Telmo · 牛排", "items": [["上午", "经典地标:太平洋拱廊、Café Tortoni、五月广场、玫瑰宫总统府、科隆剧院(整点导览)、方尖碑、女人桥", false, "Galerías Pacífico, Buenos Aires"], ["中午", "San Telmo Market", false, "Mercado de San Telmo, Buenos Aires"], ["下午", "San Telmo 区", false, "San Telmo, Buenos Aires"], ["晚饭", "Don Julio 牛排馆(Palermo,世界第一牛排馆;需提前两周订位,待订)", true, "Don Julio Buenos Aires"]], "transport": null, "stayRef": 16, "mapQuery": "Plaza de Mayo, Buenos Aires", "tip": "⚠️ Don Julio 要提前两周订位,没订到就换别家或早点去排队。", "tz": "-03:00", "stops": ["Galerías Pacífico, Buenos Aires", "Plaza de Mayo, Buenos Aires", "Obelisco, Buenos Aires", "San Telmo, Buenos Aires"]}, {"n": 36, "date": "2026-11-25", "city": "布宜诺斯艾利斯", "region": "ar", "title": "Palermo · 探戈 · 烤肉", "items": [["上午", "Palermo 区漫步", false, "Palermo, Buenos Aires"], ["上午", "两个大背包提前寄存:We Luggage(Paraguay 4591,约8000–8500 ARS/包/天,现金)或 Bounce(Charcas 4752),可先 WhatsApp 联系", false, "We Luggage Paraguay 4591 Buenos Aires"], ["18:30", "Secreto Tango Society 探戈表演(Gorriti 5801,至19:30,待预订)", true, "Secreto Tango Society Gorriti 5801 Buenos Aires", "原价约 US$182,表格记录折扣价 US$142;出发前3天再看一下有没有折扣。"], ["20:00", "Fogón Asado 9道菜品鉴套餐(待预订)", true, "Fogón Asado Buenos Aires"]], "transport": null, "stayRef": 16, "mapQuery": "Palermo, Buenos Aires", "tip": "⚠️ 探戈表演和 Fogón Asado 都还待预订,建议尽早订。", "tz": "-03:00", "stops": null}, {"n": 37, "date": "2026-11-26", "city": "伊瓜苏", "region": "ar", "title": "伊瓜苏瀑布 · 巴西侧", "items": [["06:10", "飞往伊瓜苏(AEP→IGR,JetSmart JA3140)", false, "Aeroparque Jorge Newbery, Buenos Aires", "JetSmart 只含随身小包;当天要去巴西侧,护照随身。"], ["08:03", "抵达伊瓜苏机场,打车或大巴去汽车站/酒店(备约 US$15)", false], ["09:00", "酒店 Check-in,寄存行李,买午饭", false], ["09:30", "Terminal de Omnibus 跨境大巴去巴西侧国家公园(带护照)", true, "Terminal de Ómnibus Puerto Iguazú", "上车前跟司机说要过海关,否则可能不停;带护照。"], ["10:30", "抵达巴西侧游客中心,现场买票(现金或信用卡)", false], ["10:45–12:15", "游客中心坐景区巴士到第三站 Trilha das Cataratas,栈道起点", false], ["12:15–14:15", "Mirante Garganta do Diabo 慢走(全景最震撼,水雾最强,彩虹概率高)", false], ["午饭", "国家公园门口的农家乐自助餐(表格标注一定要吃)", false], ["14:30–17:30", "鸟园 Parque das Aves:巨嘴鸟区、金刚鹦鹉区", false, "Parque das Aves Foz do Iguaçu"], ["18:00", "返回阿根廷酒店", false]], "transport": "跨境大巴(阿根廷→巴西)", "stayRef": 17, "mapQuery": "Parque Nacional do Iguaçu", "stops": ["Puerto Iguazú bus terminal", "Parque Nacional do Iguaçu", "Parque das Aves Foz do Iguaçu"], "tip": "⚠️ 过境记得带护照,上车前主动告知司机要过海关。", "tz": "-03:00"}, {"n": 38, "date": "2026-11-27", "city": "伊瓜苏", "region": "ar", "title": "伊瓜苏瀑布 · 阿根廷侧", "items": [["07:40", "打车去 Parque Nacional Iguazú(约30分钟)", false, "Parque Nacional Iguazú Argentina"], ["08:10", "抵达国家公园(上午光线最好、人最少)", false], ["08:30–10:00", "生态小火车去魔鬼咽喉 Garganta del Diablo,结束后坐小火车返回", false], ["10:15–11:30", "上层步道 Circuito Superior", false], ["11:40–12:30", "午餐:Fortín Cataratas 或园区主餐厅", false], ["12:45–15:00", "下层步道 Circuito Inferior", false], ["15:00", "快艇冲瀑布 Gran Aventura(可选,需订)", true], ["16:30", "离园,打车回市区", false], ["17:30", "三国交界点 Hito Tres Fronteras;晚餐在 Avenida Brasil", false, "Hito Tres Fronteras, Puerto Iguazú"], ["22:18", "飞回布宜诺斯艾利斯(IGR→AEP,JetSmart JA3151)", false, "Cataratas del Iguazú International Airport, Puerto Iguazú", "只含随身小包;00:19 到 AEP,Güemes 公寓入住。"]], "transport": "国内航班 IGR→AEP(JetSmart)", "stayRef": 18, "mapQuery": "Hito Tres Fronteras, Puerto Iguazú", "stops": ["Parque Nacional Iguazú Argentina", "Garganta del Diablo Iguazú", "Hito Tres Fronteras, Puerto Iguazú"], "tip": "快艇 Gran Aventura 官网 iguazujungle.com 列的场次是 9:00/10:15/11:30,和行程里的 15:00 对不上,订票时以官网实际场次为准,必要时调整当天顺序。带防晒、帽子、驱蚊、饮用水和换洗衣服。", "tz": "-03:00"}, {"n": 39, "date": "2026-11-28", "city": "布宜诺斯艾利斯", "region": "ar", "title": "雷科莱塔 & 飞往圣地亚哥", "items": [["09:00", "雅典人书店 El Ateneo + 雷科莱塔墓地(Airbnb 可12:00晚退房)", false, "El Ateneo Grand Splendid, Buenos Aires"], ["10:00", "Feria de Recoleta 周末手工集市(没有餐饮)", false, "Feria de Recoleta, Buenos Aires"], ["中午", "午饭", false], ["13:00", "打车到 AEP 机场(AEP 海关窗口少速度慢,提前近3小时)", false, "Aeroparque Jorge Newbery, Buenos Aires"], ["15:50", "飞往圣地亚哥(AEP→SCL)", false]], "transport": "国际航班 AEP→SCL(LATAM)", "stayRef": null, "mapQuery": "Recoleta Cemetery", "tip": "⚠️ AEP机场海关窗口少,建议提前2.5小时到机场。", "tz": "-03:00"}, {"n": 40, "date": "2026-11-29", "city": "回程", "region": "tr", "title": "飞回墨尔本", "items": [["01:30", "圣地亚哥起飞,经停墨尔本", false], ["11/30 05:25", "抵达墨尔本入境,行程结束(弃乘后段悉尼)", false]], "transport": "国际航班 SCL→MEL(LATAM/Qantas,经停,弃乘后段悉尼)", "stayRef": null, "mapQuery": "Melbourne Airport", "tip": "⚠️ 计划在经停点墨尔本下机、放弃后段悉尼航段——这是隐藏城市票操作,托运行李默认挂到悉尼,建议尽量只带手提行李,并留意登机口是否有异常提示。", "tz": "-03:00"}], "events": [{"iso": "2026-10-21T08:00:00+11:00", "label": "08:00 到达墨尔本机场", "city": "墨尔本", "n": 1, "map": "Melbourne Airport", "note": null, "kind": "item"}, {"iso": "2026-10-21T11:00:00+11:00", "label": "✈️ 墨尔本 MEL → 洛杉矶 LAX → 墨西哥城 MEX", "city": "墨尔本", "n": 1, "map": "Melbourne Airport", "note": "提前3小时到机场;洛杉矶转机4h40m,可去 Amex Lounge(Sidecar);护照、EVUS(Iris)备好。", "kind": "flight"}, {"iso": "2026-10-21T17:00:00-06:00", "label": "17:00 抵达墨西哥城出境,换现金,买地铁票备用", "city": "墨西哥城", "n": 1, "map": "Mexico City International Airport", "note": null, "kind": "item"}, {"iso": "2026-10-21T17:50:00-06:00", "label": "17:50 Wise 换现金", "city": "墨西哥城", "n": 1, "map": null, "note": null, "kind": "item"}, {"iso": "2026-10-21T18:00:00-06:00", "label": "18:00 Uber 去住处入住", "city": "墨西哥城", "n": 1, "map": "Avenida Nuevo León, Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-21T19:30:00-06:00", "label": "19:30 晚饭:Campobaja 海鲜餐厅", "city": "墨西哥城", "n": 1, "map": "Campobaja Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-21T21:30:00-06:00", "label": "21:30 酒吧:Bar Mauro", "city": "墨西哥城", "n": 1, "map": "Bar Mauro Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-22T08:00:00-06:00", "label": "Day 2 · 老城地标 & 市场", "city": "墨西哥城", "n": 2, "map": null, "note": null, "kind": "day"}, {"iso": "2026-10-22T14:15:00-06:00", "label": "14:15 CDMX 地标 Free Tour", "city": "墨西哥城", "n": 2, "map": "Zócalo, Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-22T19:30:00-06:00", "label": "19:30 Handshake Speakeasy", "city": "墨西哥城", "n": 2, "map": "Handshake Speakeasy Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-23T06:20:00-06:00", "label": "06:20 Primera Plus 大巴:墨西哥城 Nort…", "city": "瓜纳华托", "n": 3, "map": "Terminal de Autobuses del Norte, Mexico City", "note": "Primera Plus 车票通常发车前30分钟开始扫码上车,行李额25kg;存好二维码。", "kind": "item"}, {"iso": "2026-10-23T11:05:00-06:00", "label": "11:05 抵达瓜纳华托,入住 Casa Saucillo66", "city": "瓜纳华托", "n": 3, "map": "Callejón del Saucillo 66, Guanajuato", "note": null, "kind": "item"}, {"iso": "2026-10-23T15:00:00-06:00", "label": "15:00 Historical Downtown Tour", "city": "瓜纳华托", "n": 3, "map": "Museo Iconográfico del Quijote, Guanajuato", "note": "集合:塞万提斯雕像旁,深绿色雨伞;提前5分钟到;带水和防晒,穿舒服的鞋。", "kind": "item"}, {"iso": "2026-10-23T18:00:00-06:00", "label": "18:00 晚饭", "city": "瓜纳华托", "n": 3, "map": null, "note": null, "kind": "item"}, {"iso": "2026-10-24T08:00:00-06:00", "label": "Day 4 · 彩色小镇自由日", "city": "瓜纳华托", "n": 4, "map": null, "note": null, "kind": "day"}, {"iso": "2026-10-25T08:50:00-06:00", "label": "08:50 Primera Plus 689次大巴,瓜纳华托出发", "city": "圣米格尔德阿连德", "n": 5, "map": "Central de Autobuses Guanajuato", "note": "发车前30分钟扫码上车,行李额25kg;早饭在民宿附近吃。", "kind": "item"}, {"iso": "2026-10-25T10:10:00-06:00", "label": "10:10 抵达圣米格尔,先寄存行李 + City Walk", "city": "圣米格尔德阿连德", "n": 5, "map": "Jaime Nuno, San Miguel de Allende", "note": null, "kind": "item"}, {"iso": "2026-10-25T18:00:00-06:00", "label": "18:00 Tunki by Handshake 看日落", "city": "圣米格尔德阿连德", "n": 5, "map": "Tunki by Handshake San Miguel de Allende", "note": null, "kind": "item"}, {"iso": "2026-10-26T08:00:00-06:00", "label": "Day 6 · 返回墨西哥城", "city": "墨西哥城", "n": 6, "map": null, "note": null, "kind": "day"}, {"iso": "2026-10-26T15:45:00-06:00", "label": "15:45 步行去大巴站", "city": "墨西哥城", "n": 6, "map": "Central de Autobuses San Miguel de Allende", "note": null, "kind": "item"}, {"iso": "2026-10-26T16:30:00-06:00", "label": "16:30 Primera Plus 201次大巴返回墨西哥城…", "city": "墨西哥城", "n": 6, "map": "Central de Autobuses San Miguel de Allende", "note": "发车前30分钟扫码;晚饭在车上垫肚子。", "kind": "item"}, {"iso": "2026-10-26T20:20:00-06:00", "label": "20:20 抵达墨西哥城北站,回住处", "city": "墨西哥城", "n": 6, "map": "Avenida Nuevo León, Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-27T09:00:00-06:00", "label": "09:00 国立人类学博物馆", "city": "墨西哥城", "n": 7, "map": "Museo Nacional de Antropología", "note": null, "kind": "item"}, {"iso": "2026-10-27T19:30:00-06:00", "label": "19:30 Restaurante Rosetta", "city": "墨西哥城", "n": 7, "map": "Rosetta Restaurante Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-28T04:30:00-06:00", "label": "04:30 打车出门", "city": "墨西哥城", "n": 8, "map": null, "note": null, "kind": "item"}, {"iso": "2026-10-28T05:00:00-06:00", "label": "05:00 Xochimilco 日出船游", "city": "墨西哥城", "n": 8, "map": "Xochimilco, Mexico City", "note": null, "kind": "item"}, {"iso": "2026-10-28T23:30:00-06:00", "label": "23:30 TAPO 汽车站坐夜巴去瓦哈卡", "city": "墨西哥城", "n": 8, "map": "TAPO Terminal de Autobuses de Pasajeros de Oriente, Mexico City", "note": "票面时间仅作行政参考,当天有效;提前到站,存好二维码。", "kind": "item"}, {"iso": "2026-10-29T06:30:00-06:00", "label": "06:30 夜巴抵达瓦哈卡大巴站,去 Airbnb 放行李", "city": "瓦哈卡", "n": 9, "map": "ADO Terminal Oaxaca, 5 de Mayo 1018, Oaxaca", "note": null, "kind": "item"}, {"iso": "2026-10-29T09:00:00-06:00", "label": "09:00 Free Oaxacava Tour", "city": "瓦哈卡", "n": 9, "map": null, "note": null, "kind": "item"}, {"iso": "2026-10-29T11:30:00-06:00", "label": "11:30 Mercado 20 de Noviembre", "city": "瓦哈卡", "n": 9, "map": "Mercado 20 de Noviembre Oaxaca", "note": null, "kind": "item"}, {"iso": "2026-10-29T15:30:00-06:00", "label": "15:30 Casa Oaxaca El Restaurante", "city": "瓦哈卡", "n": 9, "map": "Casa Oaxaca El Restaurante", "note": null, "kind": "item"}, {"iso": "2026-10-30T07:30:00-06:00", "label": "07:30 Hierve el Agua 一日游", "city": "瓦哈卡", "n": 10, "map": "Jardín Etnobotánico de Oaxaca", "note": "Tour 接送/集合;带泳衣、防晒、帽子、徒步鞋。", "kind": "item"}, {"iso": "2026-10-30T16:40:00-06:00", "label": "16:40 回到瓦哈卡", "city": "瓦哈卡", "n": 10, "map": null, "note": null, "kind": "item"}, {"iso": "2026-10-31T08:00:00-06:00", "label": "Day 11 · Monte Albán · 搬家 · 亡灵节墓园", "city": "瓦哈卡", "n": 11, "map": null, "note": null, "kind": "day"}, {"iso": "2026-10-31T17:00:00-06:00", "label": "17:00 到达 Xoxo 的 Panteón Mictlan…", "city": "瓦哈卡", "n": 11, "map": "Panteón Mictlancíhuatl Xoxo Oaxaca", "note": "墓园人多车多,提前约好往返车辆;晚上偏凉带外套,贵重物品随身。", "kind": "item"}, {"iso": "2026-11-01T08:00:00-06:00", "label": "Day 12 · 亡灵节游行 · Jalatlaco", "city": "瓦哈卡", "n": 12, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-01T20:00:00-06:00", "label": "20:00 到达 Jalatlaco,参加 Comparsa …", "city": "瓦哈卡", "n": 12, "map": "Barrio de Jalatlaco, Oaxaca", "note": "夜间人多,贵重物品随身,回住处注意安全。", "kind": "item"}, {"iso": "2026-11-02T08:30:00-06:00", "label": "08:30 Quinta Brava 一日烹饪课", "city": "瓦哈卡", "n": 13, "map": "Quinta Brava Oaxaca", "note": null, "kind": "item"}, {"iso": "2026-11-02T10:30:00-06:00", "label": "10:30 学做玉米早午餐", "city": "瓦哈卡", "n": 13, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-02T12:00:00-06:00", "label": "12:00 学做3–4道菜的正餐", "city": "瓦哈卡", "n": 13, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-02T15:00:00-06:00", "label": "15:00 课程结束,送回酒店", "city": "瓦哈卡", "n": 13, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-02T23:45:00-06:00", "label": "23:45 ADO GL 夜巴返回墨西哥城", "city": "瓦哈卡", "n": 13, "map": "ADO Terminal Oaxaca, 5 de Mayo 1018, Oaxaca", "note": "亡灵节假期结束返程人多,提前到站。", "kind": "item"}, {"iso": "2026-11-03T07:00:00-06:00", "label": "07:00 夜巴抵达墨西哥城,回住处放行李", "city": "墨西哥城", "n": 14, "map": "Avenida Nuevo León, Mexico City", "note": null, "kind": "item"}, {"iso": "2026-11-04T08:00:00-06:00", "label": "Day 15 · 飞往利马", "city": "墨西哥城", "n": 15, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-04T19:30:00-06:00", "label": "19:30 到机场", "city": "墨西哥城", "n": 15, "map": "Mexico City International Airport", "note": "Volaris Basic 票不含手提行李,确认已加购;国际航班留足办理时间。", "kind": "item"}, {"iso": "2026-11-04T22:00:00-06:00", "label": "✈️ 墨西哥城 MEX → 利马 LIM", "city": "墨西哥城", "n": 15, "map": "Mexico City International Airport", "note": "红眼航班;Volaris Basic 票不含手提行李,确认已加购;国际航班留足办理时间。", "kind": "flight"}, {"iso": "2026-11-05T08:00:00-05:00", "label": "✈️ 利马 LIM → 库斯科 CUZ", "city": "利马", "n": 16, "map": "Jorge Chávez International Airport, Lima", "note": "落地利马 04:55,转机约3小时;Sky Basic 票不含手提行李;抵达库斯科海拔3400m,慢走多喝水。", "kind": "flight"}, {"iso": "2026-11-05T09:25:00-05:00", "label": "09:25 抵达库斯科:换汇,买「10天16景点」套票", "city": "库斯科", "n": 16, "map": "Alejandro Velasco Astete International Airport, Cusco", "note": null, "kind": "item"}, {"iso": "2026-11-05T12:00:00-05:00", "label": "12:00 入住 Casa de Adela", "city": "库斯科", "n": 16, "map": "Av. Amazonas Lote I-30, Pisac, Peru", "note": null, "kind": "item"}, {"iso": "2026-11-06T08:00:00-05:00", "label": "Day 17 · 皮萨克遗址 → 奥扬泰坦博", "city": "奥扬泰坦博", "n": 17, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-06T13:00:00-05:00", "label": "13:00 Pisac 退房", "city": "奥扬泰坦博", "n": 17, "map": "Av. Amazonas Lote I-30, Pisac, Peru", "note": null, "kind": "item"}, {"iso": "2026-11-07T08:00:00-05:00", "label": "Day 18 · 奥扬泰坦博 → Moray/Maras → 钦切罗", "city": "钦切罗", "n": 18, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-07T15:00:00-05:00", "label": "15:00 入住 Q'aytu", "city": "钦切罗", "n": 18, "map": "calle Soctacucho, Chinchero, Peru", "note": null, "kind": "item"}, {"iso": "2026-11-08T10:00:00-05:00", "label": "10:00 钦切罗退房,逛周日集市 Mercado Chinc…", "city": "库斯科", "n": 19, "map": "Mercado de Chinchero, Peru", "note": null, "kind": "item"}, {"iso": "2026-11-09T08:00:00-05:00", "label": "Day 20 · 库斯科市区游览", "city": "库斯科", "n": 20, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-10T08:00:00-05:00", "label": "Day 21 · 库斯科周边 Tour · 搬去 San Blas", "city": "库斯科", "n": 21, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-11T08:00:00-05:00", "label": "Day 22 · 库斯科自由日", "city": "库斯科", "n": 22, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-12T10:05:00-05:00", "label": "✈️ 库斯科 CUZ → 马尔多纳多港 PEM", "city": "库斯科", "n": 23, "map": "Alejandro Velasco Astete International Airport, Cusco", "note": "JunglePro 11:10 举牌接机;只带雨林必需品,主行李寄存办公室;Sky Basic 票注意行李额。", "kind": "flight"}, {"iso": "2026-11-12T11:10:00-05:00", "label": "11:10 抵达;JunglePro 举牌接机,主行李寄存办公室", "city": "马尔多纳多港", "n": 23, "map": "Padre Aldamiz International Airport, Puerto Maldonado", "note": null, "kind": "item"}, {"iso": "2026-11-13T04:00:00-05:00", "label": "04:00 Clay Lick 看金刚鹦鹉", "city": "马尔多纳多港", "n": 24, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-14T08:00:00-05:00", "label": "Day 25 · 雨林 D3 · 飞往巴塔哥尼亚", "city": "马尔多纳多港", "n": 25, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-14T08:30:00-05:00", "label": "08:30 离开 lodge 前往机场", "city": "马尔多纳多港", "n": 25, "map": "Padre Aldamiz International Airport, Puerto Maldonado", "note": null, "kind": "item"}, {"iso": "2026-11-14T14:35:00-05:00", "label": "✈️ 马尔多纳多港 PEM → 纳塔莱斯港 PNT", "city": "马尔多纳多港", "n": 25, "map": "Padre Aldamiz International Airport, Puerto Maldonado", "note": "3段共16.5小时,Basic 票无手提行李;随身带保暖衣物(南边天气骤降)。", "kind": "flight"}, {"iso": "2026-11-14T21:20:00-05:00", "label": "21:20 LIM→SCL", "city": "利马", "n": 25, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-15T09:08:00-03:00", "label": "09:08 抵达纳塔莱斯港,入住 Cosy Room 3", "city": "纳塔莱斯港", "n": 26, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-16T07:00:00-03:00", "label": "07:00 BusSur大巴前往百内公园Pudeto", "city": "纳塔莱斯港", "n": 27, "map": "Terminal de Buses Puerto Natales", "note": "BusSur 往返约 US$18/段;百内门票约 AUD80,3天有效,出发前备好护照和现金。", "kind": "item"}, {"iso": "2026-11-16T14:30:00-03:00", "label": "14:30 大巴返回纳塔莱斯港", "city": "纳塔莱斯港", "n": 27, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-17T07:00:00-03:00", "label": "07:00 BusSur大巴前往 Laguna Amarga", "city": "纳塔莱斯港", "n": 28, "map": "Terminal de Buses Puerto Natales", "note": null, "kind": "item"}, {"iso": "2026-11-17T20:00:00-03:00", "label": "20:00 大巴返回纳塔莱斯港", "city": "纳塔莱斯港", "n": 28, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-18T07:00:00-03:00", "label": "07:00 跨境大巴 纳塔莱斯港 → 埃尔卡拉法特", "city": "埃尔卡拉法特", "n": 29, "map": "Terminal de Buses Puerto Natales", "note": "跨境大巴含边境检查,约6小时;护照随身。", "kind": "item"}, {"iso": "2026-11-19T08:00:00-03:00", "label": "Day 30 · 莫雷诺冰川", "city": "埃尔卡拉法特", "n": 30, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-20T08:00:00-03:00", "label": "08:00 大巴前往埃尔查尔滕", "city": "埃尔查尔滕", "n": 31, "map": "Terminal de Ómnibus El Calafate", "note": null, "kind": "item"}, {"iso": "2026-11-21T08:00:00-03:00", "label": "Day 32 · 菲茨罗伊三尖峰徒步", "city": "埃尔查尔滕", "n": 32, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-22T08:00:00-03:00", "label": "Day 33 · 托雷峰徒步 或 漂流", "city": "埃尔查尔滕", "n": 33, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-23T08:00:00-03:00", "label": "Day 34 · 皮划艇 & 飞往BA", "city": "布宜诺斯艾利斯", "n": 34, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-23T09:00:00-03:00", "label": "09:00 皮划艇:徒步出口附近的旅行社集合,乘车去 Lagu…", "city": "布宜诺斯艾利斯", "n": 34, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-23T17:00:00-03:00", "label": "17:00 Chalten Travel 大巴 → 卡拉法特机场", "city": "布宜诺斯艾利斯", "n": 34, "map": "Terminal de Ómnibus El Chaltén", "note": null, "kind": "item"}, {"iso": "2026-11-23T20:45:00-03:00", "label": "✈️ 埃尔卡拉法特 FTE → 布宜诺斯艾利斯 AEP", "city": "埃尔卡拉法特", "n": 34, "map": "Comandante Armando Tola International Airport, El Calafate", "note": "不含托运行李,巴塔哥尼亚装备多,提前官网加购;17:00 大巴到机场,留足时间。", "kind": "flight"}, {"iso": "2026-11-23T23:45:00-03:00", "label": "23:45 抵达AEP,前往帕勒莫住处", "city": "布宜诺斯艾利斯", "n": 34, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-24T08:00:00-03:00", "label": "Day 35 · 经典地标 · San Telmo · 牛排", "city": "布宜诺斯艾利斯", "n": 35, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-25T08:00:00-03:00", "label": "Day 36 · Palermo · 探戈 · 烤肉", "city": "布宜诺斯艾利斯", "n": 36, "map": null, "note": null, "kind": "day"}, {"iso": "2026-11-25T18:30:00-03:00", "label": "18:30 Secreto Tango Society 探戈表演", "city": "布宜诺斯艾利斯", "n": 36, "map": "Secreto Tango Society Gorriti 5801 Buenos Aires", "note": "原价约 US$182,表格记录折扣价 US$142;出发前3天再看一下有没有折扣。", "kind": "item"}, {"iso": "2026-11-25T20:00:00-03:00", "label": "20:00 Fogón Asado 9道菜品鉴套餐", "city": "布宜诺斯艾利斯", "n": 36, "map": "Fogón Asado Buenos Aires", "note": null, "kind": "item"}, {"iso": "2026-11-26T06:10:00-03:00", "label": "✈️ 布宜诺斯艾利斯 AEP → 伊瓜苏 IGR", "city": "布宜诺斯艾利斯", "n": 37, "map": "Aeroparque Jorge Newbery, Buenos Aires", "note": "JetSmart 只含随身小包;当天要过境去巴西侧,护照随身。", "kind": "flight"}, {"iso": "2026-11-26T08:03:00-03:00", "label": "08:03 抵达伊瓜苏机场,打车或大巴去汽车站/酒店", "city": "伊瓜苏", "n": 37, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-26T09:00:00-03:00", "label": "09:00 酒店 Check-in,寄存行李,买午饭", "city": "伊瓜苏", "n": 37, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-26T09:30:00-03:00", "label": "09:30 Terminal de Omnibus 跨境大巴去…", "city": "伊瓜苏", "n": 37, "map": "Terminal de Ómnibus Puerto Iguazú", "note": "上车前跟司机说要过海关,否则可能不停;带护照。", "kind": "item"}, {"iso": "2026-11-26T10:30:00-03:00", "label": "10:30 抵达巴西侧游客中心,现场买票", "city": "伊瓜苏", "n": 37, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-26T10:45:00-03:00", "label": "10:45 游客中心坐景区巴士到第三站 Trilha das …", "city": "伊瓜苏", "n": 37, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-26T12:15:00-03:00", "label": "12:15 Mirante Garganta do Diabo…", "city": "伊瓜苏", "n": 37, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-26T14:30:00-03:00", "label": "14:30 鸟园 Parque das Aves:巨嘴鸟区、金…", "city": "伊瓜苏", "n": 37, "map": "Parque das Aves Foz do Iguaçu", "note": null, "kind": "item"}, {"iso": "2026-11-26T18:00:00-03:00", "label": "18:00 返回阿根廷酒店", "city": "伊瓜苏", "n": 37, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T07:40:00-03:00", "label": "07:40 打车去 Parque Nacional Iguazú", "city": "伊瓜苏", "n": 38, "map": "Parque Nacional Iguazú Argentina", "note": null, "kind": "item"}, {"iso": "2026-11-27T08:10:00-03:00", "label": "08:10 抵达国家公园", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T08:30:00-03:00", "label": "08:30 生态小火车去魔鬼咽喉 Garganta del D…", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T10:15:00-03:00", "label": "10:15 上层步道 Circuito Superior", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T11:40:00-03:00", "label": "11:40 午餐:Fortín Cataratas 或园区主餐厅", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T12:45:00-03:00", "label": "12:45 下层步道 Circuito Inferior", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T15:00:00-03:00", "label": "15:00 快艇冲瀑布 Gran Aventura", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T16:30:00-03:00", "label": "16:30 离园,打车回市区", "city": "伊瓜苏", "n": 38, "map": null, "note": null, "kind": "item"}, {"iso": "2026-11-27T17:30:00-03:00", "label": "17:30 三国交界点 Hito Tres Fronteras…", "city": "伊瓜苏", "n": 38, "map": "Hito Tres Fronteras, Puerto Iguazú", "note": null, "kind": "item"}, {"iso": "2026-11-27T22:18:00-03:00", "label": "✈️ 伊瓜苏 IGR → 布宜诺斯艾利斯 AEP", "city": "伊瓜苏", "n": 38, "map": "Cataratas del Iguazú International Airport, Puerto Iguazú", "note": "JetSmart 只含随身小包;00:19 到 AEP,打车回 Güemes 公寓。", "kind": "flight"}, {"iso": "2026-11-28T09:00:00-03:00", "label": "09:00 雅典人书店 El Ateneo + 雷科莱塔墓地", "city": "布宜诺斯艾利斯", "n": 39, "map": "El Ateneo Grand Splendid, Buenos Aires", "note": null, "kind": "item"}, {"iso": "2026-11-28T10:00:00-03:00", "label": "10:00 Feria de Recoleta 周末手工集市", "city": "布宜诺斯艾利斯", "n": 39, "map": "Feria de Recoleta, Buenos Aires", "note": null, "kind": "item"}, {"iso": "2026-11-28T13:00:00-03:00", "label": "13:00 打车到 AEP 机场", "city": "布宜诺斯艾利斯", "n": 39, "map": "Aeroparque Jorge Newbery, Buenos Aires", "note": null, "kind": "item"}, {"iso": "2026-11-28T15:50:00-03:00", "label": "✈️ 布宜诺斯艾利斯 AEP → 圣地亚哥 SCL", "city": "布宜诺斯艾利斯", "n": 39, "map": "Aeroparque Jorge Newbery, Buenos Aires", "note": "AEP 海关窗口少速度慢,13:00 前到机场;18:06 抵 SCL 后约7.5小时转机。", "kind": "flight"}, {"iso": "2026-11-29T01:30:00-03:00", "label": "✈️ 圣地亚哥 SCL → 墨尔本 MEL(经停,弃乘后段悉尼)", "city": "圣地亚哥", "n": 40, "map": "Arturo Merino Benítez International Airport, Santiago", "note": "01:30 起飞,经停墨尔本 05:25 下机(弃乘悉尼段);尽量只带手提行李,留意值机与登机口提示。", "kind": "flight"}, {"iso": "2026-11-30T05:25:00+11:00", "label": "✈️ 抵达墨尔本 · 旅程结束", "city": "墨尔本", "n": 40, "map": "Melbourne Airport", "note": null, "kind": "flight"}], "todos": [{"id": "t19", "text": "跟进 Home in Cusco(11.8-10)待确认订单,host有响应时限", "urgent": true, "done": false}, {"id": "t18", "text": "Basic 票按需加购手提/托运行李额:MEX→LIM、LIM→CUZ、CUZ→PEM、PEM→PNT、FTE→AEP、AEP↔IGR(40L 背包能否当手提看各航司规定)", "urgent": false, "done": false}, {"id": "t6a", "text": "墨西哥城→瓦哈卡夜巴(10.28,ADO Platino)已出票 ✓", "urgent": false, "done": true}, {"id": "t6b", "text": "瓦哈卡→墨西哥城返程夜巴(11.2 23:45,ADO GL)已付款 ✓(表格记录)", "urgent": false, "done": true}, {"id": "t8", "text": "预订百内国家公园 BusSur 车票(11.16 / 11.17)", "urgent": false, "done": false}, {"id": "t9", "text": "预订莫雷诺冰川团 或 租车(11.19)", "urgent": false, "done": false}, {"id": "t10", "text": "Don Julio 牛排馆订位(11.24,尽早蹲位)", "urgent": false, "done": false}, {"id": "t11", "text": "EVUS 更新(Iris)", "urgent": false, "done": false}, {"id": "t13", "text": "备好高反药、肠胃炎药、Hydralyte", "urgent": false, "done": false}, {"id": "t14", "text": "准备现金:MXN / PEN / CLP / ARS + 美元现金(雨林团现金付有优惠、卡拉法特住宿只收现金)", "urgent": false, "done": false}, {"id": "t15", "text": "打印护照照片备份", "urgent": false, "done": false}, {"id": "t16", "text": "租车用的驾照国际翻译件(如需在埃尔卡拉法特自驾)", "urgent": false, "done": false}, {"id": "t17", "text": "快艇冲瀑布 Gran Aventura 提前订(iguazujungle.com)", "urgent": false, "done": false}, {"id": "t20", "text": "确认两个 Free Tour 已订:墨西哥城 10.22 14:15(FreeTour,Iris)、瓦哈卡 10.29 09:00(GuruWalk,ZZ)", "urgent": false, "done": false}, {"id": "t22", "text": "Palermo Airbnb 尾款 AUD111.02(11.8 到期)", "urgent": false, "done": false}, {"id": "t23", "text": "伊瓜苏 Casa 24:入住前3天内房东会联系预付(约 US$41)", "urgent": false, "done": false}, {"id": "t24", "text": "彩虹山 或 Humantay 一日团(11.10)、Moray/Maras 包车(11.7)提前联系", "urgent": false, "done": false}, {"id": "t25", "text": "AUD 兑换美元现金(表格写 10.14 前,约 US$2000,待定)", "urgent": true, "done": false}, {"id": "t26", "text": "Quinta Brava 烹饪课(11.2)MXN1440/人未付款:确认预订和付款方式", "urgent": false, "done": false}, {"id": "t27", "text": "待订:Secreto Tango Society 探戈 + Fogón Asado(11.25)", "urgent": false, "done": false}, {"id": "t28", "text": "Amex 待还款:Hierve el Agua Airbnb Experience(10.30)", "urgent": false, "done": false}], "packing": [{"id": "p1", "group": "背包与收纳", "text": "40L 背包 ×2(Osprey/Fairview,你们已经买了)", "done": true}, {"id": "p2", "group": "背包与收纳", "text": "Sea to Summit Ultra-Sil 22L 轻量副包(徒步/雨林日游用)", "done": true}, {"id": "p3", "group": "背包与收纳", "text": "防盗腰包", "done": true}, {"id": "p4", "group": "背包与收纳", "text": "行李锁 ×2", "done": true}, {"id": "p5", "group": "背包与收纳", "text": "晾衣绳", "done": true}, {"id": "p6", "group": "背包与收纳", "text": "压缩收纳袋(40L 装40天衣物,压缩袋能省不少空间)", "done": false}, {"id": "p7", "group": "分层衣物系统", "text": "速干短袖 ×3(墨西哥城/瓦哈卡/BA/伊瓜苏日常用)", "done": false}, {"id": "p8", "group": "分层衣物系统", "text": "速干长袖 ×2", "done": false}, {"id": "p9", "group": "分层衣物系统", "text": "美利奴羊毛打底 ×1-2(库斯科、巴塔哥尼亚保暖内层,连穿几天不容易有味)", "done": false}, {"id": "p10", "group": "分层衣物系统", "text": "抓绒/羊毛中层 ×1", "done": false}, {"id": "p11", "group": "分层衣物系统", "text": "轻薄羽绒或棉服 ×1(巴塔哥尼亚清晨傍晚、埃尔卡拉法特保暖)", "done": false}, {"id": "p12", "group": "分层衣物系统", "text": "防风防水冲锋衣 ×1(百内三塔峰、菲茨罗伊徒步全天风雨无遮挡,这件不能省)", "done": false}, {"id": "p13", "group": "分层衣物系统", "text": "徒步长裤(速干/可拆卸)×1-2", "done": false}, {"id": "p14", "group": "分层衣物系统", "text": "牛仔裤或日常长裤 ×1", "done": false}, {"id": "p15", "group": "分层衣物系统", "text": "短裤 ×2(墨西哥/BA炎热天气)", "done": false}, {"id": "p16", "group": "分层衣物系统", "text": "保暖抓绒裤/秋裤 ×1(巴塔哥尼亚清晨低温)", "done": false}, {"id": "p17", "group": "分层衣物系统", "text": "泳衣", "done": false}, {"id": "p18", "group": "分层衣物系统", "text": "内裤 ×7", "done": false}, {"id": "p19", "group": "分层衣物系统", "text": "运动内衣 ×2(Iris)", "done": false}, {"id": "p_socks2", "group": "分层衣物系统", "text": "日常袜子 ×6、徒步袜 ×1、高压袜 ×1", "done": false}, {"id": "p21", "group": "鞋类", "text": "徒步鞋(防水,建议出发前先磨合几次,三塔峰/菲茨罗伊是10小时级别的大重装日)", "done": false}, {"id": "p22", "group": "鞋类", "text": "轻便城市鞋或凉鞋(墨西哥/BA炎热街区)", "done": false}, {"id": "p23", "group": "鞋类", "text": "人字拖(住宿、雨林船上、洗澡用)", "done": false}, {"id": "p24", "group": "配件", "text": "遮阳帽(高海拔+雨林紫外线都很强)", "done": false}, {"id": "p25", "group": "配件", "text": "冷帽(巴塔哥尼亚)", "done": false}, {"id": "p26", "group": "配件", "text": "墨镜", "done": false}, {"id": "p_buff2", "group": "配件", "text": "BUFF 围脖/头巾(已买)", "done": true}, {"id": "p28", "group": "配件", "text": "薄手套(巴塔哥尼亚清晨徒步)", "done": false}, {"id": "p29", "group": "证件与财务", "text": "护照(检查有效期,至少覆盖回程后6个月)", "done": false}, {"id": "p30", "group": "证件与财务", "text": "US EVUS 更新(Iris,记得打印)", "done": false}, {"id": "p31", "group": "证件与财务", "text": "驾照国际翻译件(埃尔卡拉法特如果租车自驾用)", "done": false}, {"id": "p32", "group": "证件与财务", "text": "小饼照片打印备用", "done": false}, {"id": "p33", "group": "证件与财务", "text": "防盗手机挂绳 ×2", "done": false}, {"id": "p34", "group": "证件与财务", "text": "Wise / Amex 卡", "done": true}, {"id": "p_cash2", "group": "证件与财务", "text": "现金:墨西哥比索 / 秘鲁索尔 / 智利比索 / 阿根廷比索;美元现金(表格计划约 US$2000,待定)", "done": false}, {"id": "p36", "group": "电子设备", "text": "南美/澳洲转换插头", "done": true}, {"id": "p37", "group": "电子设备", "text": "充电宝", "done": false}, {"id": "p38", "group": "电子设备", "text": "头灯(雨林夜游、徒步天不亮出发用)", "done": true}, {"id": "p39", "group": "电子设备", "text": "相机 + 备用电池 ×2 + SD卡 ×2", "done": false}, {"id": "p40", "group": "电子设备", "text": "Kindle", "done": false}, {"id": "p41", "group": "电子设备", "text": "耳机", "done": false}, {"id": "p_esim2", "group": "电子设备", "text": "电话卡 / eSIM(已买;Iris 的澳洲手机套餐已续)", "done": true}, {"id": "p43", "group": "洗漱与健康", "text": "高反药(库斯科、马丘比丘、惠曼塔湖用)", "done": true}, {"id": "p44", "group": "洗漱与健康", "text": "肠胃炎药", "done": true}, {"id": "p45", "group": "洗漱与健康", "text": "Hydralyte 电解质冲剂", "done": true}, {"id": "p46", "group": "洗漱与健康", "text": "防晒霜(高海拔+雨林紫外线强)", "done": false}, {"id": "p47", "group": "洗漱与健康", "text": "唇膏、滴眼液", "done": false}, {"id": "p_repel2", "group": "洗漱与健康", "text": "防蚊液(已买)", "done": true}, {"id": "p49", "group": "洗漱与健康", "text": "指甲刀", "done": false}, {"id": "p50", "group": "洗漱与健康", "text": "常备感冒药", "done": false}, {"id": "p51", "group": "旅行舒适装备", "text": "Sea to Summit 丝绸内胆睡袋(双人款,已买)", "done": true}, {"id": "p52", "group": "旅行舒适装备", "text": "Sea to Summit 充气旅行枕(已买)", "done": true}, {"id": "p53", "group": "旅行舒适装备", "text": "眼罩耳塞(已买)", "done": true}, {"id": "p54", "group": "旅行舒适装备", "text": "Sea to Summit 速干浴巾(已买)", "done": true}, {"id": "p55", "group": "旅行舒适装备", "text": "望远镜(观鸟/冰川用,已买)", "done": true}, {"id": "p101", "group": "电子设备", "text": "排插", "done": false}, {"id": "p102", "group": "洗漱与健康", "text": "水壶 ×2", "done": false}, {"id": "p103", "group": "洗漱与健康", "text": "洗漱用品、搓澡巾", "done": false}, {"id": "p104", "group": "证件与财务", "text": "疫苗小黄本(国际预防接种证书,已注射,出发要携带)", "done": false}]};
+const REGION = {
+  mx:{hex:'#e0932c', name:'墨西哥'},
+  pe:{hex:'#c1440e', name:'秘鲁'},
+  pt:{hex:'#35507a', name:'巴塔哥尼亚'},
+  ar:{hex:'#4f7942', name:'阿根廷东部'},
+  tr:{hex:'#8b7355', name:'转场 / 回程'}
+};
+const TRIP_TZ = {mx:'-06:00', pe:'-05:00', pt:'-03:00', ar:'-03:00', tr:'-03:00'};
+let leafletMap = null; // 提前声明，避免主题函数在地图代码之前执行时报 TDZ 错误
+const CITY_COORDS = {
+  '墨尔本': [-37.8136, 144.9631],
+  '墨西哥城': [19.4326, -99.1332],
+  '瓜纳华托': [21.0190, -101.2574],
+  '圣米格尔德阿连德': [20.9153, -100.7436],
+  '瓦哈卡': [17.0732, -96.7266],
+  '利马': [-12.0464, -77.0428],
+  '皮萨克': [-13.4219, -71.8476],
+  '奥扬泰坦博': [-13.2587, -72.2653],
+  '钦切罗': [-13.3946, -72.0472],
+  '库斯科': [-13.5319, -71.9675],
+  '马尔多纳多港': [-12.5933, -69.1891],
+  '圣地亚哥': [-33.4489, -70.6693],
+  '纳塔莱斯港': [-51.7236, -72.4875],
+  '埃尔卡拉法特': [-50.3379, -72.2648],
+  '埃尔查尔滕': [-49.3315, -72.8873],
+  '布宜诺斯艾利斯': [-34.6037, -58.3816],
+  '伊瓜苏': [-25.5952, -54.5734]
 };
 
-/* ---------------- theme: 白天/黑夜自动切换（按设备当前时间） ---------------- */
+/* ---------- 主题 ---------- */
 function applyTheme(){
   const h = new Date().getHours();
-  const night = (h < 7 || h >= 19);
-  document.documentElement.setAttribute('data-theme', night ? 'night' : 'day');
+  document.documentElement.setAttribute('data-theme', (h<7||h>=19) ? 'night' : 'day');
 }
-applyTheme();
-setInterval(applyTheme, 60000);
+applyTheme(); setInterval(applyTheme, 60000);
 
-/* ---------------- 此刻关注：倒计时 ---------------- */
+/* ---------- 工具 ---------- */
 function pad(n){ return String(n).padStart(2,'0'); }
-function renderCountdown(){
-  const now = new Date();
-  const next = DATA.events.find(e => new Date(e.iso) > now);
-  if(!next){
-    document.getElementById('heroCity').textContent = '旅程已结束';
-    document.getElementById('heroTitle').textContent = '欢迎回家 👋';
-    document.getElementById('countdown').style.display = 'none';
-    return;
-  }
-  document.getElementById('heroCity').textContent = next.city + ' · 下一个行程';
-  document.getElementById('heroTitle').innerHTML = '<b>' + next.label + '</b>';
-  const diff = new Date(next.iso) - now;
-  const d = Math.floor(diff/86400000);
-  const h = Math.floor(diff%86400000/3600000);
-  const m = Math.floor(diff%3600000/60000);
-  const s = Math.floor(diff%60000/1000);
-  document.getElementById('cd-d').textContent = d;
-  document.getElementById('cd-h').textContent = pad(h);
-  document.getElementById('cd-m').textContent = pad(m);
-  document.getElementById('cd-s').textContent = pad(s);
-}
-renderCountdown();
-setInterval(renderCountdown, 1000);
-
-/* ---------------- 行程总览地图（手绘风 SVG，垂直路线） ---------------- */
 function daysBetween(a,b){ return Math.round((new Date(b)-new Date(a))/86400000); }
-function drawMap(){
-  const nodes = [{label:'墨尔本', sub:'出发', region:'tr', nights:null, status:'confirmed'}]
-    .concat(DATA.stays.map(s => ({label:s.city, sub:s.name, nights:daysBetween(s.checkin,s.checkout), region:s.region, status:s.status})))
-    .concat([{label:'圣地亚哥 → 墨尔本', sub:'回程经停', region:'tr', nights:null, status:'pending'}]);
+function mapsSearchUrl(q){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q); }
 
-  const W = 320, rowH = 44, topPad = 20;
-  const H = topPad*2 + rowH*(nodes.length-1);
-  const cx = W/2, amp = 62;
-  const pts = nodes.map((n,i) => ({
-    x: cx + Math.sin(i*1.15)*amp,
-    y: topPad + i*rowH,
-    ...n
-  }));
-
-  let path = 'M ' + pts[0].x + ' ' + pts[0].y;
-  let segHTML = '';
-  for(let i=1;i<pts.length;i++){
-    const p0=pts[i-1], p1=pts[i];
-    const midY = (p0.y+p1.y)/2;
-    const d = 'M '+p0.x+' '+p0.y+' C '+p0.x+' '+midY+' '+p1.x+' '+midY+' '+p1.x+' '+p1.y;
-    segHTML += '<path d="'+d+'" fill="none" stroke="'+REGION_COLOR[p1.region].hex+'" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>';
-  }
-
-  let nodeHTML = '';
-  pts.forEach((p,i) => {
-    const side = Math.sin(i*1.15) >= 0 ? 1 : -1;
-    const anchor = side>0 ? 'start' : 'end';
-    const tx = p.x + side*10;
-    const color = REGION_COLOR[p.region].hex;
-    nodeHTML += '<circle cx="'+p.x+'" cy="'+p.y+'" r="4.2" fill="'+color+'" stroke="var(--bg)" stroke-width="1.6"/>';
-    nodeHTML += '<text x="'+tx+'" y="'+(p.y-4)+'" text-anchor="'+anchor+'" font-size="6.4" fill="var(--ink)" font-weight="600" style="font-family:inherit">'+p.label+'</text>';
-    if(p.sub){
-      nodeHTML += '<text x="'+tx+'" y="'+(p.y+5.5)+'" text-anchor="'+anchor+'" font-size="4.8" fill="var(--ink-soft)">'+p.sub+(p.nights? '  · '+p.nights+'晚':'')+(p.status==='pending' ? '  ⚠待确认':'')+'</text>';
+/* ---------- 天气：实时预报(Open-Meteo,免 key) + 气候参考 ---------- */
+let WX = {}, wxUpdated = null, wxError = false;
+const CLIMATE = {
+  '墨尔本':{lo:10,hi:19,txt:'春天多变,一天可能经历四季'},
+  '墨西哥城':{lo:10,hi:23,txt:'早晚凉白天暖;10月底偶有午后雷阵雨,11月基本干季'},
+  '瓜纳华托':{lo:10,hi:26,txt:'干爽,昼夜温差大'},
+  '圣米格尔德阿连德':{lo:9,hi:25,txt:'干爽,昼夜温差大'},
+  '瓦哈卡':{lo:13,hi:29,txt:'白天热晚上偏凉,基本干季'},
+  '利马':{lo:17,hi:22,txt:'多云少晴,潮湿微凉'},
+  '皮萨克':{lo:6,hi:22,txt:'白天暖晚上凉,11月进入雨季,午后可能有阵雨'},
+  '奥扬泰坦博':{lo:6,hi:22,txt:'白天暖晚上凉,11月进入雨季,午后可能有阵雨'},
+  '钦切罗':{lo:2,hi:17,txt:'海拔约3760m,风大,早晚很冷'},
+  '库斯科':{lo:4,hi:20,txt:'紫外线强,早晚冷,11月起午后阵雨变多'},
+  '马尔多纳多港':{lo:22,hi:32,txt:'湿热,雨季来临,随时可能有大雨'},
+  '圣地亚哥':{lo:11,hi:26,txt:'干燥晴朗,昼夜温差大'},
+  '纳塔莱斯港':{lo:4,hi:13,txt:'风大,天气多变,一天四季'},
+  '埃尔卡拉法特':{lo:3,hi:16,txt:'风大干燥,昼夜温差大'},
+  '埃尔查尔滕':{lo:2,hi:14,txt:'风大,山区天气变化快,早晚接近冰点'},
+  '布宜诺斯艾利斯':{lo:16,hi:25,txt:'温暖,偶有雷雨'},
+  '伊瓜苏':{lo:20,hi:31,txt:'闷热潮湿,雨后水量大'}
+};
+function wxIcon(c){
+  if(c===0) return '☀️'; if(c<=2) return '⛅'; if(c===3) return '☁️';
+  if(c===45||c===48) return '🌫️'; if(c>=51&&c<=57) return '🌦️'; if(c>=61&&c<=67) return '🌧️';
+  if((c>=71&&c<=77)||c===85||c===86) return '🌨️'; if(c>=80&&c<=82) return '🌦️'; if(c>=95) return '⛈️';
+  return '🌡️';
+}
+function wxWord(c){
+  if(c===0) return '晴'; if(c<=2) return '多云'; if(c===3) return '阴'; if(c===45||c===48) return '雾';
+  if(c>=51&&c<=57) return '毛毛雨'; if(c>=61&&c<=67) return '雨'; if((c>=71&&c<=77)||c===85||c===86) return '雪';
+  if(c>=80&&c<=82) return '阵雨'; if(c>=95) return '雷暴'; return '—';
+}
+function wxFor(city, date){
+  const c = WX[city];
+  if(c && c[date]) return Object.assign({src:'forecast'}, c[date]);
+  const r = CLIMATE[city];
+  return r ? {src:'ref', lo:r.lo, hi:r.hi, txt:r.txt} : null;
+}
+function wxChip(city, date){
+  const w = wxFor(city, date);
+  if(!w) return '';
+  if(w.src==='forecast') return wxIcon(w.code)+' '+Math.round(w.max)+'°/'+Math.round(w.min)+'°'+(w.pop!=null?' 💧'+w.pop+'%':'');
+  return '参考 '+w.lo+'–'+w.hi+'°';
+}
+function addDays(dateStr, n){ const d = new Date(dateStr+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function refreshDayWx(){
+  document.querySelectorAll('.day-wx').forEach(el=>{ el.textContent = wxChip(el.dataset.city, el.dataset.date); });
+}
+function renderWeatherPanel(){
+  const el = document.getElementById('weatherList'); if(!el) return;
+  document.getElementById('wxSub').textContent =
+    '实时预报来自 Open-Meteo,最多覆盖未来16天;更远的日期显示该地大致气温(气候参考,不是预报)。'+
+    (wxUpdated?(' 更新于 '+new Date(wxUpdated).toLocaleString('zh-CN',{hour12:false})+'。'):'')+
+    (wxError?' ⚠️ 预报加载失败(离线或网络问题),先显示气候参考。':'');
+  const segs = DATA.stays.filter(s=>CITY_COORDS[s.city]);
+  el.innerHTML = segs.map(s=>{
+    const nights = Math.max(daysBetween(s.checkin, s.checkout), 1);
+    const dates = []; for(let i=0;i<nights;i++) dates.push(addDays(s.checkin, i));
+    const fc = dates.filter(d=>WX[s.city] && WX[s.city][d]);
+    const ref = CLIMATE[s.city];
+    let body = '';
+    if(fc.length){
+      body += '<div class="wx-days">'+fc.map(d=>{
+        const w = WX[s.city][d];
+        return '<div class="wx-day"><div class="wx-d">'+d.slice(5).replace('-','/')+'</div><div class="wx-i">'+wxIcon(w.code)+'</div>'+
+          '<div class="wx-t">'+Math.round(w.max)+'°/'+Math.round(w.min)+'°</div>'+
+          '<div class="wx-p">'+wxWord(w.code)+(w.pop!=null?' · 降雨'+w.pop+'%':'')+'</div></div>';
+      }).join('')+'</div>';
     }
-  });
-
-  const svg = document.getElementById('routeMap');
-  svg.setAttribute('viewBox', '0 0 '+W+' '+H);
-  svg.innerHTML = segHTML + nodeHTML;
-
-  const legend = document.getElementById('mapLegend');
-  legend.innerHTML = Object.entries(REGION_COLOR).map(([k,v]) =>
-    '<span><i style="background:'+v.hex+'"></i>'+v.name+'</span>').join('');
+    if(ref && fc.length < dates.length){
+      body += '<div class="wx-ref">'+(fc.length?'其余日期':'')+'气候参考:大致 '+ref.lo+'–'+ref.hi+'°C · '+ref.txt+'</div>';
+    }
+    return '<div class="wx-card"><div class="wx-head"><span class="day-badge" style="background:'+REGION[s.region].hex+'"></span><b>'+s.city+'</b>'+
+      '<span class="wx-range">'+s.checkin.slice(5).replace('-','/')+' → '+s.checkout.slice(5).replace('-','/')+'</span></div>'+body+'</div>';
+  }).join('');
 }
-drawMap();
+function weatherChanged(){
+  renderWeatherPanel(); refreshDayWx();
+  if(typeof renderToday==='function') renderToday();
+  lastNextIso = null; renderCountdown();
+}
+async function loadWeather(force){
+  const cities = Object.keys(CITY_COORDS);
+  if(!force){
+    try{
+      const c = JSON.parse(localStorage.getItem('wx_cache_v1')||'null');
+      if(c && Date.now()-c.t < 3600000){ WX = c.data; wxUpdated = c.t; wxError = false; weatherChanged(); return; }
+    }catch(e){}
+  }
+  try{
+    const lat = cities.map(c=>CITY_COORDS[c][0]).join(',');
+    const lon = cities.map(c=>CITY_COORDS[c][1]).join(',');
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=16';
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    let j = await res.json(); if(!Array.isArray(j)) j = [j];
+    const out = {};
+    j.forEach((loc,i)=>{
+      const dd = loc && loc.daily; if(!dd || !cities[i]) return;
+      const m = {};
+      dd.time.forEach((t,k)=>{ m[t] = {code:dd.weather_code[k], max:dd.temperature_2m_max[k], min:dd.temperature_2m_min[k],
+        pop:(dd.precipitation_probability_max?dd.precipitation_probability_max[k]:null)}; });
+      out[cities[i]] = m;
+    });
+    WX = out; wxUpdated = Date.now(); wxError = false;
+    try{ localStorage.setItem('wx_cache_v1', JSON.stringify({t:wxUpdated, data:WX})); }catch(e){}
+  }catch(e){ wxError = true; }
+  weatherChanged();
+}
 
-/* ---------------- 已确认机票 / 住宿 ---------------- */
-function renderFlights(){
-  const el = document.getElementById('flightsList');
-  el.innerHTML = DATA.flights.map(f => (
-    '<div class="info-card"><div class="row1">'+
-      '<div><div class="title">'+f.route+'</div><div class="detail">'+f.detail+'</div></div>'+
-      '<span class="tag '+f.status+'">'+(f.status==='confirmed'?'已确认':'待补充')+'</span>'+
-    '</div></div>'
-  )).join('');
+/* ---------- 动身提醒（hero）+ 行程条目渲染 ---------- */
+let lastNextIso = null;
+function mapsNavUrl(q){ return 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(q); }
+function itemBody(it){
+  return it[1]+(it[2]?'<span class="book-flag">⚠️ 提前订</span>':'')+
+    (it[3]?' <a class="item-map" href="'+mapsSearchUrl(it[3])+'" target="_blank" rel="noopener">📍</a>':'')+
+    (it[4]?'<div class="item-note">'+it[4]+'</div>':'');
 }
-function renderStays(){
-  const el = document.getElementById('staysList');
-  el.innerHTML = DATA.stays.map(s => (
-    '<div class="info-card"><div class="row1">'+
-      '<div><div class="title">'+s.city+' · '+s.name+'</div>'+
-      '<div class="detail">'+s.checkin+' → '+s.checkout+'  ·  <span class="place-link" data-q="'+encodeURIComponent(s.addr)+'">'+s.addr+'</span></div></div>'+
-      '<span class="tag '+s.status+'">'+(s.status==='confirmed'?'已确认':'待补充')+'</span>'+
-    '</div></div>'
-  )).join('');
+function renderNextInfo(next){
+  const box = document.getElementById('heroNext'); if(!box) return;
+  if(!next){ box.innerHTML=''; box.style.display='none'; return; }
+  box.style.display = 'block';
+  const d = next.n ? DATA.days.find(x=>x.n===next.n) : null;
+  const place = next.map || (d && d.mapQuery) || null;
+  const note = next.note || (d && d.tip) || '';
+  const when = next.iso.slice(5,10).replace('-','/')+' '+next.iso.slice(11,16)+'(当地时间)';
+  const wx = wxChip(next.city, next.iso.slice(0,10));
+  box.innerHTML =
+    '<div class="hn-meta">🕒 '+when+' · '+next.city+(wx?(' · '+wx):'')+'</div>'+
+    (note?'<div class="hn-note">'+note+'</div>':'')+
+    (place?'<div class="hn-actions"><a class="btn" href="'+mapsSearchUrl(place)+'" target="_blank" rel="noopener">📍 地图</a>'+
+           '<a class="btn" href="'+mapsNavUrl(place)+'" target="_blank" rel="noopener">🧭 导航到这里</a></div>':'');
 }
-renderFlights(); renderStays();
-document.querySelectorAll('.tabs button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+
+function mapsDirUrl(stops, mode){
+  if(!stops || !stops.length) return null;
+  const clean = stops.filter(Boolean);
+  if(!clean.length) return null;
+  const dest = clean[clean.length-1];
+  const wp = clean.slice(0,-1);
+  let u = 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest)+'&travelmode='+(mode||'transit');
+  if(wp.length) u += '&waypoints='+wp.map(encodeURIComponent).join('|');
+  return u;
+}
+/* 每天用自己所在时区的 00:00 作为起点，一直延续到"下一天的起点"为止。
+   这样跨洲飞行、在飞机上跨日的那几天不会掉进判定空隙里。 */
+function dayStart(d){ return new Date(d.date+'T00:00:00'+(d.tz||TRIP_TZ[d.region])); }
+function tripToday(){
+  const now = new Date();
+  const ds = DATA.days;
+  for(let i=0;i<ds.length;i++){
+    const start = dayStart(ds[i]);
+    const end = (i+1<ds.length) ? dayStart(ds[i+1]) : new Date(start.getTime()+36*3600000);
+    if(now >= start && now < end) return ds[i];
+  }
+  return null;
+}
+function tripEnded(){
+  const last = DATA.events[DATA.events.length-1];
+  return new Date() >= new Date(last.iso);
+}
+/* 还没出发时：距离 Day1 开始（墨尔本时间）还有几天 */
+function daysUntilStart(){
+  return Math.ceil((dayStart(DATA.days[0]) - new Date())/86400000);
+}
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('.nav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    document.getElementById('flightsList').hidden = tab!=='flights';
-    document.getElementById('staysList').hidden = tab!=='stays';
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('panel-'+btn.dataset.panel).classList.add('active');
+    if(btn.dataset.panel==='overview' && leafletMap){ setTimeout(()=>leafletMap.invalidateSize(),50); }
+    window.scrollTo({top:0, behavior:'smooth'});
   });
 });
 
-/* ---------------- 逐日行程 ---------------- */
-function mapsSearchUrl(q){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q); }
-function mapsDirUrl(stops){
-  if(!stops || !stops.length) return null;
-  const dest = stops[stops.length-1];
-  const waypoints = stops.slice(0,-1);
-  let url = 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest)+'&travelmode=transit';
-  if(waypoints.length) url += '&waypoints='+waypoints.map(encodeURIComponent).join('|');
-  return url;
+/* ---------- 倒计时 ---------- */
+function renderCountdown(){
+  const now = new Date();
+  const next = DATA.events.find(e=>new Date(e.iso)>now);
+  if(!next){
+    document.getElementById('heroCity').textContent='旅程已结束';
+    document.getElementById('heroTitle').textContent='欢迎回家 👋';
+    document.getElementById('countdown').style.display='none';
+    renderNextInfo(null);
+    return;
+  }
+  if(next.iso !== lastNextIso){ lastNextIso = next.iso; renderNextInfo(next); }
+  document.getElementById('heroCity').textContent = next.city+' · 下一个行程';
+  document.getElementById('heroTitle').textContent = next.label;
+  const diff = new Date(next.iso)-now;
+  document.getElementById('cd-d').textContent = Math.floor(diff/86400000);
+  document.getElementById('cd-h').textContent = pad(Math.floor(diff%86400000/3600000));
+  document.getElementById('cd-m').textContent = pad(Math.floor(diff%3600000/60000));
+  document.getElementById('cd-s').textContent = pad(Math.floor(diff%60000/1000));
 }
-function findStay(ref){
-  return (ref===null || ref===undefined) ? null : DATA.stays[ref];
-}
-function renderDays(){
-  const el = document.getElementById('daysList');
-  el.innerHTML = DATA.days.map((d,idx) => {
-    const stay = findStay(d.stayRef);
-    const itemsHTML = d.items.map(it => (
-      '<div class="day-time">'+it[0]+'</div><div class="day-text">'+it[1]+(it[2]?'<span class="book-flag">⚠️ 提前订</span>':'')+'</div>'
-    )).join('');
-    const stops = d.stops && d.stops.length ? d.stops : [d.mapQuery];
-    const dirUrl = mapsDirUrl(stops);
-    const stayLine = stay ? ('<div class="day-meta"><b>住宿</b> '+stay.city+' · '+stay.name+'</div>') : '';
-    const transLine = d.transport ? ('<div class="day-meta"><b>交通</b> '+d.transport+'</div>') : '';
-    const tipHTML = d.tip ? ('<div class="day-tip">'+d.tip+'</div>') : '';
-    const region = REGION_COLOR[d.region];
-    return (
-      '<div class="day-card" data-idx="'+idx+'">'+
-        '<div class="day-head">'+
-          '<div class="day-num">D'+d.n+'</div>'+
-          '<div class="day-badge" style="background:'+region.hex+'"></div>'+
-          '<div class="day-headline">'+
-            '<div class="day-date">'+d.date+' · '+d.city+'</div>'+
-            '<div class="day-title">'+d.title+'</div>'+
-          '</div>'+
-          '<div class="day-chev">›</div>'+
-        '</div>'+
-        '<div class="day-body">'+
-          '<div class="day-items">'+itemsHTML+'</div>'+
-          transLine + stayLine + tipHTML +
-          '<div class="day-actions">'+
-            '<a href="'+mapsSearchUrl(d.mapQuery)+'" target="_blank" rel="noopener">📍 查看地图</a>'+
-            (dirUrl ? '<a href="'+dirUrl+'" target="_blank" rel="noopener">🧭 打开今日导航</a>' : '')+
-          '</div>'+
-        '</div>'+
-      '</div>'
-    );
-  }).join('');
+renderCountdown(); setInterval(renderCountdown,1000);
 
-  el.querySelectorAll('.day-head').forEach(head => {
-    head.addEventListener('click', () => head.closest('.day-card').classList.toggle('open'));
+/* ---------- 今日卡片 ---------- */
+function renderToday(){
+  const el = document.getElementById('todayCard');
+  if(tripEnded()){
+    el.innerHTML = '<div class="kicker">行程已结束</div><h3>欢迎回家 👋</h3><div class="meta">这份手册会一直留在这里</div>';
+    return;
+  }
+  const d = tripToday();
+  if(!d){
+    const n = Math.max(daysUntilStart(), 0);
+    const first = DATA.days[0];
+    el.innerHTML =
+      '<div class="kicker">出发倒计时</div>'+
+      '<h3>'+(n===0 ? '就是今天,准备出发' : '还有 '+n+' 天出发')+'</h3>'+
+      '<div class="meta">第一天 · '+first.date+' · '+first.title+'</div>'+
+      '<div class="today-items">'+first.items.map(it=>'<div class="t">'+it[0]+'</div><div>'+itemBody(it)+'</div>').join('')+'</div>'+
+      (urgentTodoHTML());
+    return;
+  }
+  const stay = (d.stayRef!==null && d.stayRef!==undefined) ? DATA.stays[d.stayRef] : null;
+  const stops = (d.stops && d.stops.length) ? d.stops : [d.mapQuery];
+  const dir = mapsDirUrl(stops);
+  el.innerHTML =
+    '<div class="kicker">今日行程 · DAY '+d.n+'</div>'+
+    '<h3>'+d.title+'</h3>'+
+    '<div class="meta">'+d.date+' · '+d.city+(stay?('  ·  住 '+stay.name):'')+(wxChip(d.city,d.date)?('  ·  '+wxChip(d.city,d.date)):'')+'</div>'+
+    '<div class="today-items">'+d.items.map(it=>
+      '<div class="t">'+it[0]+'</div><div>'+itemBody(it)+'</div>'
+    ).join('')+'</div>'+
+    (d.tip ? '<div class="today-alert">'+d.tip+'</div>' : '')+
+    '<div class="today-actions">'+
+      '<a class="btn primary" href="'+mapsSearchUrl(d.mapQuery)+'" target="_blank" rel="noopener">📍 今日地点</a>'+
+      (dir?'<a class="btn" href="'+dir+'" target="_blank" rel="noopener">🧭 今日导航</a>':'')+
+      '<button class="btn" onclick="jumpToDay('+d.n+')">查看完整当天</button>'+
+    '</div>';
+}
+function urgentTodoHTML(){
+  const u = (todosState||[]).filter(t=>!t.done && t.urgent);
+  if(!u.length) return '';
+  return '<div class="today-alert"><b>还没订的紧急事项:</b><br>'+u.map(t=>'· '+t.text).join('<br>')+'</div>';
+}
+function jumpToDay(n){
+  document.querySelector('.nav button[data-panel="days"]').click();
+  const d = DATA.days.find(x=>x.n===n);
+  const tab = document.querySelector('#countryTabs button[data-r="'+d.region+'"]');
+  if(tab) tab.click();
+  setTimeout(()=>{
+    const card = document.querySelector('.day-card[data-n="'+n+'"]');
+    if(card){ card.classList.add('open'); card.scrollIntoView({behavior:'smooth', block:'center'}); }
+  },80);
+}
+
+/* ---------- 真实地图（Leaflet + OpenStreetMap 免 key 底图） ---------- */
+const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+function drawMap(){
+  try{
+    if(typeof L === 'undefined'){
+      document.getElementById('realMap').innerHTML='<p style="padding:16px;font-size:12.5px;color:var(--ink-soft)">地图组件加载失败，可能是网络问题，刷新一下试试。</p>';
+    } else {
+      leafletMap = L.map('realMap', {scrollWheelZoom:false, attributionControl:false});
+      L.tileLayer(TILE_URL, {maxZoom:18, subdomains:'abc', attribution:'&copy; OpenStreetMap contributors'}).addTo(leafletMap);
+
+      // 同一个城市在 stays 里可能出现多次（比如墨西哥城来回3次），按顺序连线
+      const seq = DATA.stays.filter(s => CITY_COORDS[s.city]);
+      const latlngs = seq.map(s => CITY_COORDS[s.city]);
+
+      for(let i=1;i<seq.length;i++){
+        L.polyline([latlngs[i-1], latlngs[i]], {
+          color: REGION[seq[i].region].hex, weight: 3, opacity: 0.75
+        }).addTo(leafletMap);
+      }
+      seq.forEach((s,i) => {
+        const nights = daysBetween(s.checkin, s.checkout);
+        const marker = L.circleMarker(latlngs[i], {
+          radius: 7, fillColor: REGION[s.region].hex, color:'#fff', weight:2, fillOpacity:0.95
+        }).addTo(leafletMap);
+        marker.bindPopup('<b>'+s.city+'</b><br>'+s.name+'<br>'+nights+' 晚 · '+s.checkin+' → '+s.checkout+(s.status==='pending'?'<br>⚠️ 待确认':''));
+      });
+
+      if(latlngs.length){
+        leafletMap.fitBounds(L.latLngBounds(latlngs).pad(0.18));
+      }
+    }
+  }catch(e){
+    document.getElementById('realMap').innerHTML = '<p style="padding:16px;font-size:12.5px;color:var(--ink-soft)">地图加载出了点问题:'+e.message+'</p>';
+  }
+
+  document.getElementById('mapLegend').innerHTML =
+    Object.entries(REGION).map(([k,v])=>'<span><i style="background:'+v.hex+'"></i>'+v.name+'</span>').join('');
+
+  const routes = [
+    {r:'mx', label:'🇲🇽 墨西哥段路线', stops:['Mexico City','Guanajuato, Mexico','San Miguel de Allende','Oaxaca, Mexico'], mode:'driving'},
+    {r:'pe', label:'🇵🇪 秘鲁段路线', stops:['Cusco, Peru','Aguas Calientes, Peru','Puerto Maldonado, Peru'], mode:'driving'},
+    {r:'pt', label:'🏔 巴塔哥尼亚段路线', stops:['Puerto Natales, Chile','El Calafate, Argentina','El Chalten, Argentina'], mode:'driving'},
+    {r:'ar', label:'🇦🇷 阿根廷段路线', stops:['Buenos Aires, Argentina','Puerto Iguazu, Argentina'], mode:'driving'}
+  ];
+  document.getElementById('mapLinks').innerHTML = routes.map(x=>
+    '<a class="btn" href="'+mapsDirUrl(x.stops,x.mode)+'" target="_blank" rel="noopener">'+x.label+'</a>'
+  ).join('');
+}
+drawMap();
+
+/* ---------- 国家概览 ---------- */
+function renderCountrySummary(){
+  const order=['mx','pe','pt','ar','tr'];
+  const groups={};
+  DATA.days.forEach(d=>{ (groups[d.region]=groups[d.region]||[]).push(d); });
+  document.getElementById('countrySummary').innerHTML = order.filter(r=>groups[r]).map(r=>{
+    const g=groups[r], cities=[...new Set(g.map(d=>d.city))];
+    return '<div class="acc"><div class="acc-head" style="cursor:default">'+
+      '<div class="day-badge" style="background:'+REGION[r].hex+';margin-top:4px"></div>'+
+      '<div class="acc-main"><div class="acc-title">'+REGION[r].name+' · '+g.length+' 天</div>'+
+      '<div class="acc-sub">'+g[0].date+' → '+g[g.length-1].date+'  ·  '+cities.join(' / ')+'</div></div>'+
+    '</div></div>';
+  }).join('');
+}
+renderCountrySummary();
+
+/* ---------- 机票 / 住宿（可折叠） ---------- */
+function renderFlights(){
+  const byRegion = {};
+  DATA.flights.forEach(f=>{
+    const d = DATA.days.find(x=>x.date===f.date);
+    const r = d?d.region:'tr';
+    (byRegion[r]=byRegion[r]||[]).push(f);
+  });
+  const order=['mx','pe','pt','ar','tr'];
+  document.getElementById('flightsBox').innerHTML = order.filter(r=>byRegion[r]).map(r=>
+    '<div class="acc-group"><p class="grp-title">'+REGION[r].name.toUpperCase()+'</p>'+
+    byRegion[r].map(f=>{
+      const md = f.date.slice(5).replace('-','/');
+      return '<div class="acc"><div class="acc-head">'+
+        '<div class="acc-date">'+md+'</div>'+
+        '<div class="acc-main"><div class="acc-title">'+f.route+'</div></div>'+
+        '<span class="tag '+f.status+'">'+(f.status==='confirmed'?'已确认':'待补充')+'</span>'+
+        '<div class="acc-chev">›</div></div>'+
+        '<div class="acc-body"><div class="line">'+f.detail+'</div></div></div>';
+    }).join('')+'</div>'
+  ).join('');
+}
+function renderStays(){
+  const byRegion={};
+  DATA.stays.forEach((s,i)=>{ (byRegion[s.region]=byRegion[s.region]||[]).push({...s,idx:i}); });
+  const order=['mx','pe','pt','ar'];
+  document.getElementById('staysBox').innerHTML = order.filter(r=>byRegion[r]).map(r=>
+    '<div class="acc-group"><p class="grp-title">'+REGION[r].name.toUpperCase()+'</p>'+
+    byRegion[r].map(s=>{
+      const n = daysBetween(s.checkin,s.checkout);
+      const md = s.checkin.slice(5).replace('-','/');
+      return '<div class="acc"><div class="acc-head">'+
+        '<div class="acc-date">'+md+'</div>'+
+        '<div class="acc-main"><div class="acc-title">'+s.city+' · '+s.name+'</div>'+
+        '<div class="acc-sub">'+n+' 晚</div></div>'+
+        '<span class="tag '+s.status+'">'+(s.status==='confirmed'?'已确认':'待补充')+'</span>'+
+        '<div class="acc-chev">›</div></div>'+
+        '<div class="acc-body">'+
+          '<div class="line"><b>入住</b> '+s.checkin+(s.cin?(' '+s.cin):'')+'　<b>退房</b> '+s.checkout+(s.cout?(' '+s.cout):'')+'</div>'+
+          (s.note?('<div class="line"><b>备注</b> '+s.note+'</div>'):'')+
+          '<div class="line"><b>地址</b> <span class="place-link" data-q="'+encodeURIComponent(s.addr)+'">'+s.addr+'</span></div>'+
+          '<div class="day-actions"><a class="btn" href="'+mapsSearchUrl(s.addr)+'" target="_blank" rel="noopener">📍 在地图中打开</a></div>'+
+        '</div></div>';
+    }).join('')+'</div>'
+  ).join('');
+}
+renderFlights(); renderStays();
+document.querySelectorAll('#bookingTabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#bookingTabs button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('flightsBox').hidden = b.dataset.b!=='flights';
+    document.getElementById('staysBox').hidden = b.dataset.b!=='stays';
+  });
+});
+
+/* ---------- 逐日行程（按国家分组） ---------- */
+let currentRegion = 'all';
+function renderCountryTabs(){
+  const order=['mx','pe','pt','ar','tr'];
+  const present = order.filter(r=>DATA.days.some(d=>d.region===r));
+  document.getElementById('countryTabs').innerHTML =
+    '<button data-r="all" class="active">全部</button>'+
+    present.map(r=>{
+      const c = DATA.days.filter(d=>d.region===r).length;
+      return '<button data-r="'+r+'">'+REGION[r].name+' '+c+'天</button>';
+    }).join('');
+  document.querySelectorAll('#countryTabs button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('#countryTabs button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      currentRegion = b.dataset.r;
+      renderDays();
+    });
   });
 }
-renderDays();
+function renderDays(){
+  const today = tripToday();
+  const list = DATA.days.filter(d=>currentRegion==='all'||d.region===currentRegion);
+  document.getElementById('daysList').innerHTML = list.map(d=>{
+    const stay = (d.stayRef!==null&&d.stayRef!==undefined)?DATA.stays[d.stayRef]:null;
+    const items = d.items.map(it=>'<div class="day-time">'+it[0]+'</div><div class="day-text">'+itemBody(it)+'</div>').join('');
+    const stops = (d.stops&&d.stops.length)?d.stops:[d.mapQuery];
+    const dir = mapsDirUrl(stops);
+    const isToday = today && today.n===d.n;
+    return '<div class="day-card'+(isToday?' is-today open':'')+'" data-n="'+d.n+'">'+
+      '<div class="day-head">'+
+        '<div class="day-num">D'+d.n+'</div>'+
+        '<div class="day-badge" style="background:'+REGION[d.region].hex+'"></div>'+
+        '<div class="day-headline"><div class="day-date">'+d.date+' · '+d.city+(isToday?' · 今天':'')+'<span class="wx day-wx" data-city="'+d.city+'" data-date="'+d.date+'">'+wxChip(d.city,d.date)+'</span></div>'+
+        '<div class="day-title">'+d.title+'</div></div>'+
+        '<div class="day-chev">›</div>'+
+      '</div>'+
+      '<div class="day-body">'+
+        '<div class="day-items">'+items+'</div>'+
+        (d.transport?'<div class="day-meta"><b>交通</b> '+d.transport+'</div>':'')+
+        (stay?'<div class="day-meta"><b>住宿</b> '+stay.city+' · '+stay.name+'</div>':'')+
+        (d.tip?'<div class="day-tip">'+d.tip+'</div>':'')+
+        '<div class="day-actions">'+
+          '<a class="btn" href="'+mapsSearchUrl(d.mapQuery)+'" target="_blank" rel="noopener">📍 查看地图</a>'+
+          (dir?'<a class="btn" href="'+dir+'" target="_blank" rel="noopener">🧭 打开今日导航</a>':'')+
+        '</div>'+
+      '</div></div>';
+  }).join('');
+  document.querySelectorAll('.day-head').forEach(h=>{
+    h.addEventListener('click',()=>h.closest('.day-card').classList.toggle('open'));
+  });
+}
+renderCountryTabs(); renderDays();
 
-/* ---------------- 待办清单（多端同步） ---------------- */
+/* ---------- 折叠交互（机票住宿） ---------- */
+document.addEventListener('click',e=>{
+  const head = e.target.closest('.acc-head');
+  if(head && head.style.cursor!=='default' && !e.target.closest('a')){
+    head.closest('.acc').classList.toggle('open');
+  }
+  const pl = e.target.closest('.place-link');
+  if(pl){ window.open(mapsSearchUrl(decodeURIComponent(pl.dataset.q)),'_blank'); }
+});
+
+/* ---------- 待办 ---------- */
 let todosState = DATA.todos;
 async function loadTodos(){
   try{
     const res = await fetch('/api/todos');
-    if(res.ok){ todosState = await res.json(); }
-  }catch(e){ /* 离线时用内置初始数据 */ }
-  renderTodos();
-  renderHeroTodo();
+    if(res.ok) todosState = await res.json();
+  }catch(e){}
+  renderTodos(); renderHeroTodo(); renderToday();
 }
 async function toggleTodo(id){
   const t = todosState.find(x=>x.id===id);
   t.done = !t.done;
-  renderTodos(); renderHeroTodo();
+  renderTodos(); renderHeroTodo(); renderToday();
   try{
-    const res = await fetch('/api/todos', {
-      method:'POST', headers:{'content-type':'application/json'},
-      body: JSON.stringify({id, done: t.done})
-    });
-    if(res.ok){ todosState = await res.json(); renderTodos(); renderHeroTodo(); }
-  }catch(e){ document.getElementById('todoSyncNote').textContent = '⚠️ 当前离线，勾选暂未同步给对方'; }
+    const res = await fetch('/api/todos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,done:t.done})});
+    if(res.ok){ todosState = await res.json(); renderTodos(); renderHeroTodo(); renderToday(); }
+  }catch(e){ document.getElementById('todoSyncNote').textContent='⚠️ 当前离线，勾选暂未同步给对方'; }
 }
 function renderHeroTodo(){
-  const next = todosState.find(t=>!t.done);
-  document.getElementById('heroTodo').textContent = next ? next.text : '全部完成 🎉';
+  const n = todosState.find(t=>!t.done);
+  document.getElementById('heroTodo').textContent = n ? n.text : '全部完成 🎉';
 }
 function renderTodos(){
-  const el = document.getElementById('todoList');
-  const sorted = [...todosState].sort((a,b) => (a.done - b.done) || (b.urgent - a.urgent));
-  el.innerHTML = sorted.map(t => (
+  const sorted=[...todosState].sort((a,b)=>(a.done-b.done)||(b.urgent-a.urgent));
+  document.getElementById('todoList').innerHTML = sorted.map(t=>
     '<div class="todo-item '+(t.done?'done':'')+'" data-id="'+t.id+'">'+
       '<div class="todo-check">'+(t.done?'✓':'')+'</div>'+
       '<div class="todo-text">'+t.text+'</div>'+
-      (!t.done && t.urgent ? '<div class="todo-urgent">尽快</div>' : '')+
-    '</div>'
-  )).join('');
-  el.querySelectorAll('.todo-item').forEach(item => {
-    item.addEventListener('click', () => toggleTodo(item.dataset.id));
-  });
+      (!t.done&&t.urgent?'<div class="todo-urgent">尽快</div>':'')+
+    '</div>').join('');
+  document.querySelectorAll('.todo-item').forEach(i=>i.addEventListener('click',()=>toggleTodo(i.dataset.id)));
   const done = todosState.filter(t=>t.done).length;
-  document.getElementById('progressFill').style.width = (todosState.length? done/todosState.length*100 : 0)+'%';
+  document.getElementById('progressFill').style.width = (todosState.length?done/todosState.length*100:0)+'%';
   document.getElementById('progressLabel').textContent = done+' / '+todosState.length;
 }
+/* ---------- 打包清单（多选 + 整组勾选 + 多端同步） ---------- */
+let packingState = DATA.packing;
+let packSelectMode = false, packOnlyTodo = false;
+const packSel = new Set();
+async function loadPacking(){
+  try{
+    const res = await fetch('/api/packing');
+    if(res.ok) packingState = await res.json();
+  }catch(e){}
+  renderPacking();
+}
+async function postPack(payload){
+  try{
+    const res = await fetch('/api/packing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    if(res.ok){ packingState = await res.json(); document.getElementById('packSyncNote').textContent=''; renderPacking(); }
+  }catch(e){ document.getElementById('packSyncNote').textContent='⚠️ 当前离线，勾选暂未同步给对方'; }
+}
+function setPackMany(ids, done){
+  const set = new Set(ids);
+  packingState.forEach(it=>{ if(set.has(it.id)) it.done = done; });
+  renderPacking();
+  return postPack({ids:Array.from(set), done:done});
+}
+function togglePack(id){
+  const it = packingState.find(x=>x.id===id);
+  return setPackMany([id], !it.done);
+}
+function packGroups(){
+  const groups = [];
+  packingState.forEach(it=>{
+    let g = groups.find(x=>x.name===it.group);
+    if(!g){ g = {name:it.group, items:[]}; groups.push(g); }
+    g.items.push(it);
+  });
+  return groups;
+}
+function renderPackBar(){
+  const bar = document.getElementById('packBar'); if(!bar) return;
+  bar.style.display = (packSelectMode && packSel.size>0) ? 'flex' : 'none';
+  document.getElementById('packBarCount').textContent = '已选 '+packSel.size+' 项';
+  const mb = document.getElementById('packModeBtn');
+  mb.textContent = packSelectMode ? '✕ 退出多选' : '☑ 多选模式';
+  mb.className = 'btn' + (packSelectMode ? ' on' : '');
+  document.getElementById('packTodoBtn').className = 'btn' + (packOnlyTodo ? ' on' : '');
+}
+function renderPacking(){
+  const groups = packGroups();
+  document.getElementById('packingList').innerHTML = groups.map((g,gi)=>{
+    const done = g.items.filter(i=>i.done).length;
+    const shown = packOnlyTodo ? g.items.filter(i=>!i.done) : g.items;
+    if(!shown.length) return '';
+    const allSel = shown.every(i=>packSel.has(i.id));
+    const btn = packSelectMode
+      ? '<button data-act="selgrp" data-gi="'+gi+'">'+(allSel?'取消选本组':'选择本组')+'</button>'
+      : '<button data-act="allgrp" data-gi="'+gi+'">'+(done===g.items.length?'本组全部取消':'本组全部勾选')+'</button>';
+    return '<div class="acc-group"><div class="grp-head"><p class="grp-title">'+g.name+'　'+done+'/'+g.items.length+'</p><div class="grp-btns">'+btn+'</div></div>'+
+      shown.map(it=>
+        '<div class="todo-item '+(it.done?'done':'')+(packSel.has(it.id)?' sel':'')+'" data-pid="'+it.id+'">'+
+          (packSelectMode ? '<div class="sel-dot">'+(packSel.has(it.id)?'✓':'')+'</div>' : '<div class="todo-check">'+(it.done?'✓':'')+'</div>')+
+          '<div class="todo-text">'+it.text+(packSelectMode&&it.done?' <span style="font-size:11px">(已备好)</span>':'')+'</div>'+
+        '</div>'
+      ).join('')+
+    '</div>';
+  }).join('');
+  const done = packingState.filter(t=>t.done).length;
+  document.getElementById('packProgressFill').style.width = (packingState.length?done/packingState.length*100:0)+'%';
+  document.getElementById('packProgressLabel').textContent = done+' / '+packingState.length;
+  renderPackBar();
+}
+function packListClick(e){
+  const btn = e.target.closest('button[data-act]');
+  if(btn){
+    const g = packGroups()[+btn.dataset.gi]; if(!g) return;
+    const ids = (packOnlyTodo ? g.items.filter(i=>!i.done) : g.items).map(i=>i.id);
+    if(btn.dataset.act==='allgrp'){
+      const allDone = g.items.every(i=>i.done);
+      setPackMany(g.items.map(i=>i.id), !allDone);
+    } else {
+      const allSel = ids.every(id=>packSel.has(id));
+      ids.forEach(id=>{ if(allSel) packSel.delete(id); else packSel.add(id); });
+      renderPacking();
+    }
+    return;
+  }
+  const row = e.target.closest('.todo-item'); if(!row) return;
+  const id = row.dataset.pid;
+  if(packSelectMode){ if(packSel.has(id)) packSel.delete(id); else packSel.add(id); renderPacking(); }
+  else togglePack(id);
+}
+document.getElementById('packingList').addEventListener('click', packListClick);
+document.getElementById('packModeBtn').addEventListener('click', ()=>{ packSelectMode = !packSelectMode; packSel.clear(); renderPacking(); });
+document.getElementById('packTodoBtn').addEventListener('click', ()=>{ packOnlyTodo = !packOnlyTodo; renderPacking(); });
+document.getElementById('packBarDone').addEventListener('click', ()=>{ const ids=Array.from(packSel); packSel.clear(); setPackMany(ids, true); });
+document.getElementById('packBarUndo').addEventListener('click', ()=>{ const ids=Array.from(packSel); packSel.clear(); setPackMany(ids, false); });
+document.getElementById('packBarClear').addEventListener('click', ()=>{ packSel.clear(); renderPacking(); });
+loadPacking();
+setInterval(loadPacking, 20000);
+
+renderToday();
 loadTodos();
 setInterval(loadTodos, 20000);
 
-/* ---------------- 地址点击唤起地图 ---------------- */
-document.addEventListener('click', (e) => {
-  const t = e.target.closest('.place-link');
-  if(t){ window.open(mapsSearchUrl(decodeURIComponent(t.dataset.q)), '_blank'); }
-});
+document.getElementById('wxRefresh').addEventListener('click', ()=>loadWeather(true));
+renderWeatherPanel();
+loadWeather(false);
+setInterval(()=>loadWeather(false), 3600000);
 </script>
 </body>
 </html>
-
-`;
-
-const DEFAULT_TODOS = [
- {
-  "id": "t1",
-  "text": "预订马丘比丘门票 + 进山小火车(11.8-9)",
-  "urgent": true,
-  "done": false
- },
- {
-  "id": "t2",
-  "text": "预订/确认热水镇(Aguas Calientes)11.8-9住宿",
-  "urgent": true,
-  "done": false
- },
- {
-  "id": "t4",
-  "text": "补充埃尔卡拉法特→BA机票电子票(11.23)",
-  "urgent": true,
-  "done": false
- },
- {
-  "id": "t6",
-  "text": "预订瓦哈卡往返夜巴车票(10.28 & 11.2,ADO Platino)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t7",
-  "text": "预订弗里达故居门票(10.28)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t8",
-  "text": "预订百内国家公园 BusSur 车票(11.16 / 11.17)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t9",
-  "text": "预订莫雷诺冰川团 或 租车(11.19)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t10",
-  "text": "Don Julio 牛排馆订位(11.24,尽早蹲位)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t11",
-  "text": "EVUS 更新(Iris)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t12",
-  "text": "办好当地手机卡/eSIM",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t13",
-  "text": "备好高反药、肠胃炎药、Hydralyte",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t14",
-  "text": "准备当地现金(MXN / PEN / CLP / ARS)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t15",
-  "text": "打印护照照片备份",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t16",
-  "text": "租车用的驾照国际翻译件(如需在埃尔卡拉法特自驾)",
-  "urgent": false,
-  "done": false
- },
- {
-  "id": "t17",
-  "text": "快艇冲瀑布 Gran Aventura 提前订(iguazujungle.com)",
-  "urgent": false,
-  "done": false
- }
-];
-
-function json(data, init) {
-  return new Response(JSON.stringify(data), {
-    ...init,
-    headers: { 'content-type': 'application/json; charset=utf-8', ...(init && init.headers) }
-  });
-}
-
-async function readTodos(env) {
-  if (!env.TRIP_KV) return DEFAULT_TODOS;
-  const stored = await env.TRIP_KV.get('todos', 'json');
-  if (stored) return stored;
-  await env.TRIP_KV.put('todos', JSON.stringify(DEFAULT_TODOS));
-  return DEFAULT_TODOS;
-}
-
-async function writeTodoUpdate(env, id, done) {
-  const list = await readTodos(env);
-  const next = list.map(t => (t.id === id ? { ...t, done: !!done } : t));
-  if (env.TRIP_KV) await env.TRIP_KV.put('todos', JSON.stringify(next));
-  return next;
-}
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    if (url.pathname === '/api/todos' && request.method === 'GET') {
-      return json(await readTodos(env));
-    }
-
-    if (url.pathname === '/api/todos' && request.method === 'POST') {
-      let body;
-      try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, { status: 400 }); }
-      if (!body || typeof body.id !== 'string') return json({ error: 'missing id' }, { status: 400 });
-      const updated = await writeTodoUpdate(env, body.id, body.done);
-      return json(updated);
-    }
-
-    if (url.pathname === '/api/todos/reset' && request.method === 'POST') {
-      if (env.TRIP_KV) await env.TRIP_KV.put('todos', JSON.stringify(DEFAULT_TODOS));
-      return json(DEFAULT_TODOS);
-    }
-
-    if (url.pathname === '/' || url.pathname === '/index.html') {
-      return new Response(PAGE_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
-    }
-
-    return new Response('Not found', { status: 404 });
-  }
-};
