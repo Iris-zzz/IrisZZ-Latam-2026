@@ -1,0 +1,45 @@
+// Pages Functions：todos 的多端同步接口，带合并迁移逻辑，支持批量勾选(ids)
+// 读取时把 DEFAULT 里新增/修改的条目合并进已存数据，保留已勾选的 done 状态；DEFAULT 里已删除的旧条目会被淘汰。
+
+const DEFAULT_LIST = [{"id": "t18", "text": "Basic 票按需加购手提/托运行李额:MEX→LIM、LIM→CUZ、CUZ→PEM、PEM→PNT、FTE→AEP、AEP↔IGR(40L 背包能否当手提看各航司规定)", "urgent": false, "done": false}, {"id": "t6a", "text": "墨西哥城→瓦哈卡夜巴(10.28,ADO Platino)已出票 ✓", "urgent": false, "done": true}, {"id": "t6b", "text": "瓦哈卡→墨西哥城返程夜巴(11.2 23:45,ADO GL)已付款 ✓(表格记录)", "urgent": false, "done": true}, {"id": "t8", "text": "预订百内国家公园 BusSur 车票(11.16 / 11.17)", "urgent": false, "done": false}, {"id": "t9", "text": "预订莫雷诺冰川团 或 租车(11.19)", "urgent": false, "done": false}, {"id": "t10", "text": "Don Julio 牛排馆订位(11.24,尽早蹲位)", "urgent": false, "done": false}, {"id": "t11", "text": "EVUS 更新(Iris)", "urgent": false, "done": false}, {"id": "t13", "text": "备好高反药、肠胃炎药、Hydralyte", "urgent": false, "done": false}, {"id": "t14", "text": "准备现金:MXN / PEN / CLP / ARS + 美元现金(雨林团现金付有优惠、卡拉法特住宿只收现金)", "urgent": false, "done": false}, {"id": "t15", "text": "打印护照照片备份", "urgent": false, "done": false}, {"id": "t16", "text": "租车用的驾照国际翻译件(如需在埃尔卡拉法特自驾)", "urgent": false, "done": false}, {"id": "t17", "text": "快艇冲瀑布 Gran Aventura 提前订(iguazujungle.com)", "urgent": false, "done": false}, {"id": "t22", "text": "Palermo Airbnb 尾款 AUD111.02(11.8 到期)", "urgent": false, "done": false}, {"id": "t23", "text": "伊瓜苏 Casa 24:入住前3天内房东会联系预付(约 US$41)", "urgent": false, "done": false}, {"id": "t24", "text": "彩虹山 或 Humantay 一日团(11.10)、Moray/Maras 包车(11.7)提前联系", "urgent": false, "done": false}, {"id": "t25", "text": "AUD 兑换美元现金(表格写 10.14 前,约 US$2000,待定)", "urgent": true, "done": false}, {"id": "t26", "text": "Quinta Brava 烹饪课(11.2)已通过 WhatsApp 预订(联系人 Romina Garza);MXN1440/人尚未付款,确认付款方式", "urgent": false, "done": false}, {"id": "t27", "text": "待订:Secreto Tango Society(11.24 或 11.25 二选一)+ Fogón Asado(11.25)", "urgent": false, "done": false}, {"id": "t28", "text": "Amex 待还款:Hierve el Agua Airbnb Experience(10.30)", "urgent": false, "done": false}];
+
+function json(data, init) {
+  return new Response(JSON.stringify(data), {
+    ...init,
+    headers: { 'content-type': 'application/json; charset=utf-8', ...(init && init.headers) }
+  });
+}
+
+function mergeWithDefault(stored, defaults) {
+  const storedMap = new Map(stored.map(x => [x.id, x]));
+  return defaults.map(d => {
+    const s = storedMap.get(d.id);
+    return s ? { ...d, done: !!s.done } : { ...d };
+  });
+}
+
+async function readList(env) {
+  if (!env.TRIP_KV) return DEFAULT_LIST;
+  const stored = await env.TRIP_KV.get('todos', 'json');
+  const merged = stored ? mergeWithDefault(stored, DEFAULT_LIST) : DEFAULT_LIST;
+  await env.TRIP_KV.put('todos', JSON.stringify(merged));
+  return merged;
+}
+
+export async function onRequestGet(context) {
+  return json(await readList(context.env));
+}
+
+export async function onRequestPost(context) {
+  const { request, env } = context;
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad json' }, { status: 400 }); }
+  // 兼容单个 id，也支持一次勾选多个 ids
+  const ids = Array.isArray(body && body.ids) ? body.ids : (body && typeof body.id === 'string' ? [body.id] : null);
+  if (!ids || !ids.length) return json({ error: 'missing id' }, { status: 400 });
+  const idSet = new Set(ids.filter(x => typeof x === 'string'));
+  const list = await readList(env);
+  const next = list.map(t => (idSet.has(t.id) ? { ...t, done: !!body.done } : t));
+  if (env.TRIP_KV) await env.TRIP_KV.put('todos', JSON.stringify(next));
+  return json(next);
+}
